@@ -10,7 +10,6 @@ import {
 import {
   ready,
   decode,
-  encode,
   wrapPasskey,
   erase,
   type Encrypted,

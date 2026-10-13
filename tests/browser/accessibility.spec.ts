@@ -2,7 +2,22 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 async function audit(page: Page, surface: string) {
-  await page.evaluate(() => document.fonts.ready);
+  // Measure settled colors and layout, excluding continuous indicators.
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((done) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => done())),
+    );
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"])
     .analyze();
@@ -10,7 +25,17 @@ async function audit(page: Page, surface: string) {
     result.violations.map(({ id, impact, nodes }) => ({
       id,
       impact,
-      elements: nodes.map(({ target }) => target),
+      elements: nodes.map(({ target, any }) => ({
+        target,
+        contrast: any
+          .filter((check) => check.id === "color-contrast")
+          .map(({ data }) => ({
+            foreground: data?.fgColor,
+            background: data?.bgColor,
+            ratio: data?.contrastRatio,
+            required: data?.expectedContrastRatio,
+          })),
+      })),
     })),
     surface,
   ).toEqual([]);

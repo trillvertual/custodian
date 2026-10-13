@@ -179,6 +179,11 @@ function SetupScreen({
         vaultId = crypto.randomUUID();
       const created = createIdentity(password, id);
       privateKey = created.privateKey;
+      const loginSecret = deriveLoginSecret(
+        password,
+        username,
+        store.config!.rpId,
+      );
       let result: { csrf: string };
       if (invite) {
         result = await api("/invites/accept", "POST", {
@@ -187,11 +192,7 @@ function SetupScreen({
           username,
           displayName,
           identity: created.identity,
-          loginSecret: deriveLoginSecret(
-            password,
-            username,
-            store.config!.rpId,
-          ),
+          loginSecret,
         });
       } else {
         key = randomKey();
@@ -206,11 +207,7 @@ function SetupScreen({
           identity: created.identity,
           sealedKey: sealVaultKey(key, created.identity.publicKey, vaultId, 1),
           recovery: rescue.box,
-          loginSecret: deriveLoginSecret(
-            password,
-            username,
-            store.config!.rpId,
-          ),
+          loginSecret,
         });
         store.setRecovery({ code: rescue.code, name: vaultName, epoch: 1 });
       }

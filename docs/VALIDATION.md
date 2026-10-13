@@ -23,7 +23,7 @@ WebAuthn assertion подписывается синтетическим P-256 �
 
 ## Обязательные проверки CI перед релизом
 
-На момент подготовки этого документа итоговый прогон CI ещё не завершён. Публикация требует успешного выполнения:
+Результаты доступны в [GitHub Actions](https://github.com/trillvertual/custodian/actions). Публикация требует успешного выполнения:
 
 - Typecheck, format check, полного unit/integration suite, `npm audit` и сборки.
 - Объединённого Playwright suite из 16 desktop/mobile сценариев на финальном commit.
