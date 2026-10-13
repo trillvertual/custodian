@@ -1,0 +1,135 @@
+{
+  "repository": "https://github.com/mishkatik/infra-billing",
+  "commit": "9a91a11d0ab662908e6ee9488797a9569aa2be43",
+  "files": [
+    {
+      "source": "apps/frontend/src/components/ui/button.tsx",
+      "target": "apps/web/src/components/ui/button.tsx",
+      "sourceSha256": "30a2c595897c3fa71f0421913d89924ee3d01b2eeb5cae541dfe1e125a0e2fb8"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/table.tsx",
+      "target": "apps/web/src/components/ui/table.tsx",
+      "sourceSha256": "eae68188ee0ddb5ce2f16faf9c46b6b8df8c86e38c3509342b9643cb56ee2a28"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/card.tsx",
+      "target": "apps/web/src/components/ui/card.tsx",
+      "sourceSha256": "0f3b8e296fa9751ffebda0043e83604478a38a2908958d71da371d811984fdc7"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/input.tsx",
+      "target": "apps/web/src/components/ui/input.tsx",
+      "sourceSha256": "bb7d95be9111c5bac40c5048f5eda0ab04c30ac984d92c3f3957d934acccb3fa"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/dialog.tsx",
+      "target": "apps/web/src/components/ui/dialog-primitives.tsx",
+      "sourceSha256": "2861c9278fcedce192b748503b782fb8e5b4fb637739759fd4316fb8b0a2df6b"
+    },
+    {
+      "source": "apps/frontend/src/components/ink/CardHeadRow.tsx",
+      "target": "apps/web/src/components/card-head-row.tsx",
+      "sourceSha256": "4b06654ed960ef5f5d0301b016c8cf72bfc662627dd44ff812e354e13f7339e6"
+    },
+    {
+      "source": "apps/frontend/src/components/PageHeader.tsx",
+      "target": "apps/web/src/components/page-header.tsx",
+      "sourceSha256": "b9c5001f502d0e987a0c8bf9c9eead23f84f0e6f5a7fa37e307e3c63e35fa87c"
+    },
+    {
+      "source": "apps/frontend/src/layout/pageChrome.tsx",
+      "target": "apps/web/src/layout/pageChrome.tsx",
+      "sourceSha256": "767acb3200b083b6b7df45c8bb1800de65b94363e197d1c2ebda75f0369f6c61"
+    },
+    {
+      "source": "apps/frontend/src/index.css",
+      "target": "apps/web/src/infra-theme.css",
+      "sourceSha256": "21f890aacbe090043c32f7f8899ef3054b31c261dd26b022341f4d007149b33d"
+    },
+    {
+      "source": "apps/frontend/src/mobile.css",
+      "target": "apps/web/src/infra-mobile.css",
+      "sourceSha256": "cf58aedfb300c61efe43ed531e82e1b6970ac8d1db6e9e5215015dc2d2d4f5c3"
+    },
+    {
+      "source": "apps/frontend/src/lib/utils.ts",
+      "target": "apps/web/src/lib/utils.ts",
+      "sourceSha256": "74e8fe9d0d680c442ed6adb13e7d119d6c210c19ae6c114313b2a72552be0883"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/command.tsx",
+      "target": "apps/web/src/components/ui/command.tsx",
+      "sourceSha256": "6178db577fe6d0a3474c14f76698be7041e4d9f8c99a95350617d6fe934267d1"
+    },
+    {
+      "source": "apps/frontend/src/layout/AppLayout.tsx",
+      "target": "apps/web/src/layout/AppLayout.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "4a5f7af2e4373c7fc84a242ec31f722cba1551646cbc51a5030eafcadb5200b6"
+    },
+    {
+      "source": "apps/frontend/src/layout/SidebarParts.tsx",
+      "target": "apps/web/src/layout/AppLayout.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "69e175ad09102babef43d3fb7024acb14fe24a1a939260d0c68f5c4c6b146d42"
+    },
+    {
+      "source": "apps/frontend/src/components/BrandWordmark.tsx",
+      "target": "apps/web/src/components/auth.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "da232d79603a50040b2144b1d6cca03d10dc78ec28d7ee68eb3d8fdb5a774471"
+    },
+    {
+      "source": "apps/frontend/src/components/CommandPalette.tsx",
+      "target": "apps/web/src/components/search-palette.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "0700a4123ca8e45dac3e600d4b82d94d00821b3ae208f222481bbecc3c7ac3aa"
+    },
+    {
+      "source": "apps/frontend/src/pages/LoginPage.tsx",
+      "target": "apps/web/src/components/auth.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "a873cb38f31878966cc19c9d9a90ec15d1b0304a4636261e8d71eb22f691d627"
+    },
+    {
+      "source": "apps/frontend/src/pages/services/ServicesTable.tsx",
+      "target": "apps/web/src/App.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "b2c2fda8982cb35f9a3cb9f896f4cc8b6405e59bf323a8fda62d2511eeecc23f"
+    },
+    {
+      "source": "apps/frontend/src/components/RwpPromo.tsx",
+      "target": "apps/web/src/components/rwp-promo.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "9c0ef92952fa6fdfa347420a3c65fd8e93bd59bcdd77365a84a4c10811283aa7"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/popover.tsx",
+      "target": "apps/web/src/components/ui/popover.tsx",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "aa099e84eefe73f3b0bf95cf1d220f5e596d7ef6b425e99f0c793f192ee94e4b"
+    },
+    {
+      "source": "apps/frontend/src/assets/rwp-logo.svg",
+      "target": "apps/web/public/rwp-logo.svg",
+      "adaptation": "domain-specific adaptation",
+      "sourceSha256": "68818e8f8ebf9b20ef8093fc1506ad1e3ab91b57f219e43fb04bb85a7d722918"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/select.tsx",
+      "target": "apps/web/src/components/ui/select.tsx",
+      "sourceSha256": "3697e4716b5c716322382056d8bb86bbe7c6604eb72f33e5ebed505f10ae4190"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/tooltip.tsx",
+      "target": "apps/web/src/components/ui/tooltip.tsx",
+      "sourceSha256": "cf43d675ccefbf9bddb41a55ee9e8abc2afcdabeef63d45aa0e5954d7a9172a1"
+    },
+    {
+      "source": "apps/frontend/src/components/ui/checkbox.tsx",
+      "target": "apps/web/src/components/ui/checkbox.tsx",
+      "sourceSha256": "9c5462ca9b0ccd649ac196e1449da808cf17fdf20d4f2380b00f9b8e62a101b1"
+    }
+  ]
+}

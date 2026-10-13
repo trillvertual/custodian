@@ -1,0 +1,12 @@
+node_modules
+**/dist
+.git
+.env
+.env.*
+.impeccable
+.recovery
+coverage
+tests
+test-results
+playwright-report
+*.log

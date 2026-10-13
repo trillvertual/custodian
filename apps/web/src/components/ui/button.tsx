@@ -1,0 +1,110 @@
+import type * as React from "react";
+import { useEffect, useRef, useState } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { Slot } from "@radix-ui/react-slot";
+
+import { cn } from "../../lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./tooltip";
+
+const buttonVariants = cva(
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-[background-color,color,border-color,opacity] outline-none focus-visible:ring-3 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/25",
+        outline:
+          "border border-input bg-card hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+        ghost: "text-ink-2 hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        xs: "h-6 gap-1 rounded-sm px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-8 gap-1.5 rounded-md px-3 text-[13px] has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-xs": "size-6 rounded-sm [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  title,
+  tooltip,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+    tooltip?: React.ReactNode | false;
+  }) {
+  const Comp = asChild ? Slot : "button";
+  const [hintOpen, setHintOpen] = useState(false);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const clearFocusTimer = () => clearTimeout(focusTimer.current);
+  useEffect(() => clearFocusTimer, []);
+
+  const button = (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+  const hint =
+    tooltip === false
+      ? null
+      : (tooltip ??
+        title ??
+        (size?.startsWith("icon") ? props["aria-label"] : null));
+  return hint ? (
+    <TooltipProvider>
+      <Tooltip open={hintOpen} onOpenChange={setHintOpen}>
+        <TooltipTrigger
+          asChild
+          onFocus={(event) => {
+            // Match hover delay. Tab navigation should not flash hints or swallow Escape.
+            event.preventDefault();
+            clearFocusTimer();
+            focusTimer.current = setTimeout(() => setHintOpen(true), 350);
+          }}
+          onBlur={() => {
+            clearFocusTimer();
+            setHintOpen(false);
+          }}
+          onPointerDown={clearFocusTimer}
+        >
+          {button}
+        </TooltipTrigger>
+        <TooltipContent>{hint}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : (
+    button
+  );
+}
+
+export { Button, buttonVariants };

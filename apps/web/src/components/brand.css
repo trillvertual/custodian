@@ -1,0 +1,55 @@
+.custodian-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.brand-wordmark {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brand-mark {
+  --brand-shell: #790d16;
+  --brand-core: #e5d3af;
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.brand-shell {
+  fill: var(--brand-shell);
+}
+
+.brand-core {
+  fill: var(--brand-core);
+}
+
+.dark .brand-mark {
+  --brand-shell: #dc8d95;
+}
+
+.auth-container > .brand.custodian-brand {
+  display: inline-flex;
+}
+
+.custodian-brand.mobile-brand {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .custodian-brand.mobile-brand {
+    display: inline-flex;
+  }
+
+  .mobile-brand .brand-mark {
+    width: 24px;
+    height: 24px;
+  }
+}

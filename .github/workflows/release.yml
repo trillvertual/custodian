@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+  publish:
+    name: Publish public image and release
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      packages: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_IMAGE: ghcr.io/trillvertual/custodian-app
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run release:check
+      - name: Require the public repository and a new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          test "$GITHUB_REPOSITORY" = trillvertual/custodian
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = false
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2> "$RUNNER_TEMP/release-error"; then
+            echo "Release already exists. Refusing to replace published artifacts or image."
+            exit 1
+          else
+            grep -qi 'release not found' "$RUNNER_TEMP/release-error"
+          fi
+      - run: npm run build
+      - name: Scan source and built files before publishing the image
+        run: npm run secrets:check -- --path apps/web/dist --path apps/server/dist --path packages/rescue/dist
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Preserve an existing versioned image on a retry
+        id: existing-image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          package_api=users/trillvertual/packages/container/custodian-app
+          if gh api "$package_api" > "$RUNNER_TEMP/package.json" 2> "$RUNNER_TEMP/package-error"; then
+            gh api "$package_api/versions?per_page=100" --paginate --slurp > "$RUNNER_TEMP/package-versions.json"
+            jq --arg tag "$RELEASE_TAG" '[.[][] | select((.metadata.container.tags // []) | index($tag)) | .name] | unique' "$RUNNER_TEMP/package-versions.json" > "$RUNNER_TEMP/tag-digests.json"
+            test "$(jq length "$RUNNER_TEMP/tag-digests.json")" -le 1
+            digest=$(jq -r '.[0] // empty' "$RUNNER_TEMP/tag-digests.json")
+            if test -n "$digest"; then
+              [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+              image_ref="$RELEASE_IMAGE@$digest"
+              docker pull "$image_ref"
+              docker image inspect "$image_ref" --format '{{json .Config.Labels}}' > "$RUNNER_TEMP/image-labels.json"
+              jq --exit-status --arg revision "$GITHUB_SHA" --arg version "$RELEASE_TAG" '."org.opencontainers.image.revision" == $revision and ."org.opencontainers.image.version" == $version and ."org.opencontainers.image.source" == "https://github.com/trillvertual/custodian"' "$RUNNER_TEMP/image-labels.json" > /dev/null
+              echo "digest=$digest" >> "$GITHUB_OUTPUT"
+              echo "Reusing $image_ref for the same release commit; the published image will not be replaced."
+            fi
+          else
+            grep -q 'HTTP 404' "$RUNNER_TEMP/package-error"
+          fi
+      - name: Build and publish
+        id: image
+        if: steps.existing-image.outputs.digest == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ env.RELEASE_IMAGE }}:${{ github.ref_name }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - name: Resolve the exact published digest
+        id: published-image
+        env:
+          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.image.outputs.digest }}
+        shell: bash
+        run: |
+          digest="${EXISTING_DIGEST:-$BUILD_DIGEST}"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Require public package visibility
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          settings_url=https://github.com/users/trillvertual/packages/container/custodian-app/settings
+          package_api=users/trillvertual/packages/container/custodian-app
+          visibility=$(timeout 10s gh api "$package_api" --jq .visibility)
+          if test "$visibility" != public; then
+            {
+              echo "## Container package visibility"
+              echo "GitHub creates the first container package as private."
+              echo "Set **custodian-app** to **Public** at [$settings_url]($settings_url)."
+              echo "This job waits up to five minutes. If it times out, change visibility and rerun the failed job; the same image digest is reused."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Waiting up to five minutes for public visibility: $settings_url"
+            deadline=$((SECONDS + 280))
+            while test "$visibility" != public && (( SECONDS < deadline )); do
+              sleep 10
+              visibility=$(timeout 10s gh api "$package_api" --jq .visibility)
+            done
+          fi
+          if test "$visibility" != public; then
+            echo "::error::Container package is still private. Set it to Public at $settings_url and rerun the failed job."
+            exit 1
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = false
+      - name: Verify anonymous access to the repository and image
+        env:
+          PUBLISHED_DIGEST: ${{ steps.published-image.outputs.digest }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq --exit-status '.private == false' > /dev/null
+          anonymous_config=$(mktemp -d "$RUNNER_TEMP/custodian-anonymous-docker.XXXXXX")
+          trap 'rm -rf "$anonymous_config"' EXIT
+          docker --config "$anonymous_config" pull "$RELEASE_IMAGE@$PUBLISHED_DIGEST"
+      - name: Configure isolated image check
+        id: smoke-config
+        run: npm run configure -- --url https://vault.test
+      - name: Check the exact published image
+        env:
+          CUSTODIAN_IMAGE: ${{ env.RELEASE_IMAGE }}@${{ steps.published-image.outputs.digest }}
+        run: |
+          docker compose -p custodian-release-check pull app db
+          docker compose -p custodian-release-check up -d --no-build --wait --wait-timeout 180
+          npm run test:container
+          docker compose -p custodian-release-check exec -T app node packages/rescue/dist/index.js --help
+      - name: Package archives and checksums
+        env:
+          RELEASE_IMAGE_DIGEST: ${{ steps.published-image.outputs.digest }}
+        run: npm run release:package
+      - name: Scan the release archives and metadata
+        run: npm run secrets:check -- --artifacts-only --path dist/release
+      - name: Publish release after uploading all assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          assets=(dist/release/*)
+          test "${#assets[@]}" = 5
+          cd dist/release
+          sha256sum --check SHA256SUMS
+          cd ../..
+          gh release create "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Custodian $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+      - name: Verify anonymous access to the published release
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/public-release.json"
+          jq --exit-status --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false and (.assets | length) == 5' "$RUNNER_TEMP/public-release.json" > /dev/null
+      - name: Clean isolated image check
+        if: always() && steps.smoke-config.outcome == 'success'
+        run: docker compose -p custodian-release-check down --volumes

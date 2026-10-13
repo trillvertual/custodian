@@ -1,0 +1,51 @@
+{
+  "name": "custodian",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm run dev -w @vault/server\" \"npm run dev -w @vault/web\"",
+    "build": "npm run build -w @vault/web && npm run build -w @vault/server && npm run build -w @vault/rescue",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
+    "test": "vitest run",
+    "start": "node apps/server/dist/index.js",
+    "rescue": "tsx --env-file-if-exists=.env packages/rescue/src/index.ts",
+    "configure": "tsx scripts/configure.ts",
+    "preview:demo": "concurrently -k -n demo,web \"tsx tests/dev-server.ts\" \"npm run dev -w @vault/web\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:browser": "npm run build -w @vault/web && playwright test",
+    "screenshots": "npm run build -w @vault/web && tsx scripts/screenshots.ts",
+    "release:check": "tsx scripts/release-check.ts",
+    "release:package": "tsx scripts/package-release.ts",
+    "test:container": "tsx scripts/container-smoke.ts",
+    "secrets:check": "tsx scripts/secret-scan.ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.64.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^10.0.6",
+    "jsdom": "^30.1.2",
+    "prettier": "^3.9.9",
+    "tsx": "^4.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trillvertual/custodian.git"
+  }
+}

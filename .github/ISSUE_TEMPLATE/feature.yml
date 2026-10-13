@@ -1,0 +1,15 @@
+name: Предложение
+description: Задача пользователя и желаемое поведение
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Что требуется решить и для кого
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Желаемый результат
+    validations:
+      required: true

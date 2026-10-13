@@ -1,0 +1,20 @@
+title = "Custodian secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "custodian-rescue-key"
+description = "Custodian offline recovery key"
+regex = '''\bSVR1\.[A-Za-z0-9_-]{43}\b'''
+keywords = ["SVR1."]
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "RFC 6238 public test vector, only in its two synthetic fixtures"
+  condition = "AND"
+  paths = ['''(^|/)tests/(crypto\.test|dev-server)\.ts$''']
+  regexTarget = "secret"
+  regexes = ['''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''']

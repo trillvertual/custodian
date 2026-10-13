@@ -1,0 +1,23 @@
+name: Ошибка
+description: Воспроизводимая ошибка с синтетическими данными
+body:
+  - type: markdown
+    attributes:
+      value: Не добавляйте пароли, токены, rescue-ключи, .env или реальные выгрузки. Уязвимости описаны в SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Версия Custodian и среда
+      placeholder: v0.2.0, Docker, браузер и ОС
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Шаги, ожидаемое и фактическое поведение
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Обезличенные логи или скриншоты
