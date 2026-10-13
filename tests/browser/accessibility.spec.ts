@@ -117,8 +117,19 @@ test("vault flows meet automated WCAG checks in both themes and motion settings"
     await page.getByLabel("Название", { exact: true }).waitFor();
     await audit(page, `${theme} editor`);
     await page.getByRole("button", { name: "Отмена", exact: true }).click();
+    await expect(
+      page.getByRole("dialog", {
+        name: "Редактировать запись",
+        includeHidden: true,
+      }),
+    ).toHaveCount(0);
+    await page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => done())),
+    );
     await page.keyboard.press("Control+k");
-    await page.getByRole("dialog", { name: "Поиск записей" }).waitFor();
+    await expect(
+      page.getByRole("dialog", { name: "Поиск записей" }),
+    ).toBeVisible();
     await audit(page, `${theme} search`);
     await page.keyboard.press("Escape");
     for (const title of ["Настройки", "Команда", "Журнал действий"]) {
