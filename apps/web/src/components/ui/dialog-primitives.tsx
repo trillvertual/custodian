@@ -76,7 +76,8 @@ function DialogContent({
         className={cn(
           // *:min-w-0 deviates from upstream: grid items default to min-width:auto, so one long
           // unbreakable label (e.g. a select value) would blow the whole form out of the dialog.
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-5 rounded-2xl bg-popover p-6 text-popover-foreground shadow-lg duration-200 outline-none *:min-w-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:max-w-lg",
+          // Viewport bounds must resize immediately; styles.css owns enter/exit animations.
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-5 rounded-2xl bg-popover p-6 text-popover-foreground shadow-lg transition-none outline-none *:min-w-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:max-w-lg",
           className,
         )}
         {...props}
