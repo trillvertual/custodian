@@ -7,11 +7,11 @@
 Скачайте файлы релиза через GitHub или `gh`:
 
 ```bash
-gh release download v0.2.0 --repo trillvertual/custodian --dir custodian-download
+gh release download v0.3.0 --repo trillvertual/custodian --dir custodian-download
 cd custodian-download
 sha256sum --check SHA256SUMS
-tar -xzf custodian-0.2.0-source.tar.gz
-cd custodian-0.2.0
+tar -xzf custodian-0.3.0-source.tar.gz
+cd custodian-0.3.0
 npm ci
 npm run configure -- --url https://vault.example.com
 ```
