@@ -20,6 +20,7 @@ export function Form({
   children,
   onSubmit,
   onChange,
+  autoComplete = "off",
   ...props
 }: ComponentProps<"form">) {
   const messageId = useId();
@@ -33,6 +34,7 @@ export function Form({
     >
       <form
         {...props}
+        autoComplete={autoComplete}
         noValidate
         onInvalid={(event) => event.preventDefault()}
         onChange={(event) => {

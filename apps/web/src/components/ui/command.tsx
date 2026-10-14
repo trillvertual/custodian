@@ -83,6 +83,8 @@ function CommandInput({
           className,
         )}
         {...props}
+        autoComplete="off"
+        data-bwignore="true"
       />
     </div>
   );

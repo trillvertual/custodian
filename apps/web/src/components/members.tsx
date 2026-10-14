@@ -38,6 +38,7 @@ import type { VaultStore } from "../lib/store";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { ErrorMessage } from "./forms";
+import { SelectableValue } from "./ui/selectable-value";
 import { TableLoading } from "./table-loading";
 export function Members({ store }: { store: VaultStore }) {
   const [members, setMembers] = useState<Member[]>([]),
@@ -354,7 +355,7 @@ export function Members({ store }: { store: VaultStore }) {
         description="Ссылка действует 24 часа и используется один раз."
       >
         <div className="invite-link">
-          <input aria-label="Ссылка приглашения" value={invite} readOnly />
+          <SelectableValue label="Ссылка приглашения" value={invite} />
           <Button
             variant="outline"
             size="icon"

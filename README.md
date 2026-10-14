@@ -77,7 +77,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
 
 ## Запуск на VPS
 
-Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.4.0](https://github.com/trillvertual/custodian/releases/tag/v0.4.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
+Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.4.0](https://github.com/trillvertual/custodian/releases/tag/v0.4.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Bitwarden и менеджеры паролей](docs/PASSWORD-MANAGERS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
 
 Нужны Node.js >=22.12 для настройки, Docker Compose и HTTPS reverse proxy.
 

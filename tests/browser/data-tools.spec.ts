@@ -2,6 +2,182 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import QRCode from "qrcode";
 import { mkdir } from "node:fs/promises";
+
+test("password manager boundaries preserve account autofill and keep invitation output outside inputs", async ({
+  page,
+  context,
+}, info) => {
+  test.setTimeout(120000);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  async function accountFields(
+    form: ReturnType<Page["locator"]>,
+    kind: "current-password" | "new-password",
+    username?: string,
+  ) {
+    const login = form.locator('input[name="username"]');
+    await expect(login).toHaveAttribute("autocomplete", "username");
+    await expect(login).not.toHaveAttribute("data-bwignore");
+    if (username) await expect(login).toHaveValue(username);
+    const passwords = form.locator(
+      'input[name="password"], input[name="new-password"], input[name="confirm-password"]',
+    );
+    expect(await passwords.count()).toBeGreaterThan(0);
+    for (const password of await passwords.all()) {
+      await expect(password).toHaveAttribute("autocomplete", kind);
+      await expect(password).not.toHaveAttribute("data-bwignore");
+    }
+  }
+  async function navigate(title: string) {
+    if (info.project.name === "tools-mobile")
+      await page
+        .getByRole("button", { name: "Открыть навигацию", exact: true })
+        .click();
+    await page
+      .locator(".sidebar")
+      .getByRole("button", { name: title, exact: true })
+      .click();
+    await page.getByRole("heading", { name: title, exact: true }).waitFor();
+  }
+  await page.goto("/");
+  await accountFields(page.locator("#custodian-login"), "current-password");
+  await page.route("**/api/auth/config", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), initialized: false },
+    });
+  });
+  await page.reload();
+  await accountFields(page.locator("#custodian-registration"), "new-password");
+  await expect(page.getByLabel("Код первоначальной настройки")).toHaveAttribute(
+    "data-bwignore",
+    "true",
+  );
+  await page.unroute("**/api/auth/config");
+  await login(page);
+  await page.reload();
+  await page
+    .getByRole("heading", { name: "Хранилище заблокировано", exact: true })
+    .waitFor();
+  await accountFields(
+    page.locator("#custodian-unlock"),
+    "current-password",
+    "demo",
+  );
+  await unlock(page);
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", {
+    name: "Новая запись",
+    exact: true,
+  });
+  for (const input of await editor.locator("input,textarea").all()) {
+    await expect(input).toHaveAttribute("data-bwignore", "true");
+    await expect(input).toHaveAttribute("autocomplete", "off");
+  }
+  await editor
+    .getByRole("button", { name: "Показать пароль", exact: true })
+    .click();
+  await expect(editor.getByLabel("Пароль", { exact: true })).toHaveAttribute(
+    "type",
+    "text",
+  );
+  await expect(editor.getByLabel("Пароль", { exact: true })).toHaveAttribute(
+    "data-bwignore",
+    "true",
+  );
+  await editor.getByRole("button", { name: "Отмена", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Новая запись", includeHidden: true }),
+  ).toHaveCount(0);
+  await navigate("Настройки");
+  await page.getByRole("button", { name: "Изменить", exact: true }).click();
+  await accountFields(
+    page.locator("#custodian-change-password"),
+    "new-password",
+    "demo",
+  );
+  await navigate("Команда");
+  await page.getByRole("button", { name: "Пригласить", exact: true }).click();
+  const invite = page.getByRole("dialog", {
+    name: "Приглашение в команду",
+    exact: true,
+  });
+  const value = invite.getByRole("textbox", {
+    name: "Ссылка приглашения",
+    exact: true,
+  });
+  await expect(value).toHaveAttribute("aria-readonly", "true");
+  await expect(
+    invite.locator("input,textarea,[contenteditable=true]"),
+  ).toHaveCount(0);
+  const url = (await value.textContent())!;
+  expect(new URL(url).searchParams.get("invite")).toBeTruthy();
+  await value.focus();
+  await page.keyboard.press("Control+a");
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    url,
+  );
+  await page.keyboard.press("Control+c");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(url);
+  await invite
+    .getByRole("button", { name: "Копировать приглашение", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(url);
+  await value.focus();
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate(
+      (theme) =>
+        document.documentElement.classList.toggle("dark", theme === "dark"),
+      theme,
+    );
+    await audit(page, `${info.project.name}-${theme}-invitation-output`);
+  }
+  await invite.getByRole("button", { name: "Закрыть", exact: true }).click();
+  if (info.project.name === "tools-mobile")
+    await page
+      .getByRole("button", { name: "Открыть навигацию", exact: true })
+      .click();
+  await page
+    .getByRole("button", { name: "Выйти из аккаунта", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Вход в хранилище", exact: true })
+    .waitFor();
+  await page.goto(url);
+  await page
+    .getByRole("heading", { name: "Присоединиться к команде", exact: true })
+    .waitFor();
+  const signup = page.locator("#custodian-registration");
+  await accountFields(signup, "new-password");
+  await signup
+    .getByLabel("Ваше имя", { exact: true })
+    .fill("Synthetic Bitwarden Admin");
+  await signup
+    .getByLabel("Логин", { exact: true })
+    .fill(`bw-${info.project.name}`);
+  await signup
+    .getByLabel("Пароль", { exact: true })
+    .fill("SYNTHETIC-bw-registration-password!");
+  await signup
+    .getByLabel("Повторите пароль", { exact: true })
+    .fill("SYNTHETIC-bw-registration-password!");
+  await signup
+    .getByRole("button", { name: "Создать аккаунт", exact: true })
+    .click();
+  await page
+    .getByRole("heading", {
+      name: "Нужно подтверждение владельца",
+      exact: true,
+    })
+    .waitFor();
+});
+
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel("Логин", { exact: true }).fill("demo");
