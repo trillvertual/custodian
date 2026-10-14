@@ -4,12 +4,18 @@ import { useFieldValidation } from "./form";
 
 import { cn } from "../../lib/utils";
 
+export type InputProps = React.ComponentProps<"input"> & {
+  passwordManager?: "allow" | "ignore";
+};
+
 function Input({
   className,
   type,
   id: providedId,
+  autoComplete,
+  passwordManager = "ignore",
   ...props
-}: React.ComponentProps<"input">) {
+}: InputProps) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const errorId = useFieldValidation(id);
@@ -25,6 +31,8 @@ function Input({
         className,
       )}
       {...props}
+      autoComplete={passwordManager === "allow" ? autoComplete : "off"}
+      data-bwignore={passwordManager === "ignore" ? "true" : undefined}
       aria-invalid={errorId ? true : props["aria-invalid"]}
       aria-describedby={
         [props["aria-describedby"], errorId].filter(Boolean).join(" ") ||

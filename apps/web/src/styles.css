@@ -129,7 +129,8 @@ textarea {
   scrollbar-color: var(--input) transparent;
 }
 input,
-textarea {
+textarea,
+.selectable-value {
   width: 100%;
   min-width: 0;
   border: 1px solid transparent;
@@ -141,7 +142,8 @@ textarea {
   outline: none;
 }
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+.selectable-value:focus-visible {
   border-color: color-mix(in srgb, var(--ring) 40%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent);
 }
@@ -778,6 +780,12 @@ code,
 .invite-link {
   display: flex;
   gap: 8px;
+}
+.selectable-value {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: all;
 }
 .fingerprint-box {
   padding: 16px;

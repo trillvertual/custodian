@@ -1,14 +1,14 @@
-import type { ReactNode, InputHTMLAttributes } from "react";
+import type { ReactNode } from "react";
 import { useId, useState } from "react";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Input, type InputProps } from "./ui/input";
 export function Field({
   label,
   hint,
   id: providedId,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+}: InputProps & { label: string; hint?: string }) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const hintId = `${id}-hint`;
@@ -33,7 +33,7 @@ export function PasswordField({
   hint,
   id: providedId,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+}: InputProps & { label: string; hint?: string }) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const hintId = `${id}-hint`;

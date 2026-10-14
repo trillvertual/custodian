@@ -325,6 +325,7 @@ export function RecordEditor({
                   <label htmlFor="ssh-secret">Приватный SSH-ключ</label>
                   <textarea
                     id="ssh-secret"
+                    data-bwignore="true"
                     className="mono-input"
                     rows={5}
                     value={data.secret}
@@ -359,6 +360,8 @@ export function RecordEditor({
                 <label htmlFor="record-note">Заметка</label>
                 <textarea
                   id="record-note"
+                  autoComplete="off"
+                  data-bwignore="true"
                   rows={3}
                   value={data.note}
                   onChange={(e) => change("note", e.target.value)}

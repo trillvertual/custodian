@@ -91,9 +91,17 @@ export function AuthScreen({ store }: { store: VaultStore }) {
           <div className="auth-divider">
             <span>или по паролю</span>
           </div>
-          <Form onSubmit={passwordSubmit} className="form-stack">
+          <Form
+            id="custodian-login"
+            onSubmit={passwordSubmit}
+            className="form-stack"
+            autoComplete="on"
+          >
             <Field
               label="Логин"
+              id="custodian-login-username"
+              name="username"
+              passwordManager="allow"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
@@ -104,6 +112,9 @@ export function AuthScreen({ store }: { store: VaultStore }) {
             />
             <PasswordField
               label="Пароль"
+              id="custodian-login-password"
+              name="password"
+              passwordManager="allow"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
@@ -259,11 +270,18 @@ function SetupScreen({
               </Button>
             </>
           ) : (
-            <Form onSubmit={submit} className="form-stack">
+            <Form
+              id="custodian-registration"
+              onSubmit={submit}
+              className="form-stack"
+              autoComplete="on"
+            >
               {!invite && (
                 <>
                   <Field
                     label="Код первоначальной настройки"
+                    id="custodian-setup-token"
+                    name="setup-token"
                     hint="Из SETUP_TOKEN в конфигурации сервера."
                     value={setupToken}
                     onChange={(e) => setSetupToken(e.target.value)}
@@ -273,6 +291,8 @@ function SetupScreen({
                   />
                   <Field
                     label="Название хранилища"
+                    id="custodian-vault-name"
+                    name="vault-name"
                     value={vaultName}
                     onChange={(e) => setVaultName(e.target.value)}
                     maxLength={100}
@@ -283,6 +303,9 @@ function SetupScreen({
               <div className="form-grid">
                 <Field
                   label="Ваше имя"
+                  id="custodian-display-name"
+                  name="display-name"
+                  passwordManager="allow"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   maxLength={100}
@@ -292,6 +315,9 @@ function SetupScreen({
                 />
                 <Field
                   label="Логин"
+                  id="custodian-registration-username"
+                  name="username"
+                  passwordManager="allow"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   pattern="[a-z0-9_.\-]{3,64}"
@@ -308,6 +334,9 @@ function SetupScreen({
               </div>
               <PasswordField
                 label="Пароль"
+                id="custodian-registration-password"
+                name="new-password"
+                passwordManager="allow"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={14}
@@ -319,6 +348,9 @@ function SetupScreen({
               />
               <PasswordField
                 label="Повторите пароль"
+                id="custodian-registration-confirm"
+                name="confirm-password"
+                passwordManager="allow"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 minLength={14}
@@ -429,9 +461,26 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
                 : `${user.vaultName} · ${user.displayName}`}
           </p>
           {reset ? (
-            <Form onSubmit={recover} className="form-stack">
+            <Form
+              id="custodian-recovery"
+              onSubmit={recover}
+              className="form-stack"
+              autoComplete="on"
+            >
+              <Field
+                label="Логин"
+                id="custodian-recovery-username"
+                name="username"
+                value={user.username}
+                readOnly
+                autoComplete="username"
+                passwordManager="allow"
+              />
               <PasswordField
                 label="Новый пароль"
+                id="custodian-recovery-password"
+                name="new-password"
+                passwordManager="allow"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={14}
@@ -496,9 +545,26 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
           ) : (
             <>
               {store.session!.passwordEnabled && (
-                <Form onSubmit={unlock} className="form-stack">
+                <Form
+                  id="custodian-unlock"
+                  onSubmit={unlock}
+                  className="form-stack"
+                  autoComplete="on"
+                >
+                  <Field
+                    label="Логин"
+                    id="custodian-unlock-username"
+                    name="username"
+                    value={user.username}
+                    readOnly
+                    autoComplete="username"
+                    passwordManager="allow"
+                  />
                   <PasswordField
                     label="Пароль"
+                    id="custodian-unlock-password"
+                    name="password"
+                    passwordManager="allow"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
@@ -723,6 +789,8 @@ export function Enrollment({ store }: { store: VaultStore }) {
       </div>
       {showPassword && (
         <Form
+          id="custodian-change-password"
+          autoComplete="on"
           className="form-stack"
           onSubmit={async (e) => {
             e.preventDefault();
@@ -745,8 +813,20 @@ export function Enrollment({ store }: { store: VaultStore }) {
             }
           }}
         >
+          <Field
+            label="Логин"
+            id="custodian-change-username"
+            name="username"
+            value={session.user.username}
+            readOnly
+            autoComplete="username"
+            passwordManager="allow"
+          />
           <PasswordField
             label="Новый пароль"
+            id="custodian-change-password-value"
+            name="new-password"
+            passwordManager="allow"
             hint="От 14 до 256 символов. Для входа и открытия записей."
             minLength={14}
             maxLength={256}
@@ -757,6 +837,9 @@ export function Enrollment({ store }: { store: VaultStore }) {
           />
           <PasswordField
             label="Повторите пароль"
+            id="custodian-change-password-confirm"
+            name="confirm-password"
+            passwordManager="allow"
             minLength={14}
             maxLength={256}
             autoComplete="new-password"
