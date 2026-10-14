@@ -1,0 +1,457 @@
+import { test, expect, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import QRCode from "qrcode";
+import { mkdir } from "node:fs/promises";
+async function login(page: Page) {
+  await page.goto("/");
+  await page.getByLabel("Логин", { exact: true }).fill("demo");
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill("Demo login password 2026!");
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Открыть Cloudflare", exact: true })
+    .waitFor();
+}
+async function unlock(page: Page) {
+  await page
+    .getByRole("heading", { name: "Хранилище заблокировано" })
+    .waitFor();
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill("Demo login password 2026!");
+  await page
+    .getByRole("button", { name: "Разблокировать", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Открыть Cloudflare", exact: true })
+    .waitFor();
+}
+async function audit(page: Page, name: string) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"])
+    .analyze();
+  expect(
+    result.violations.map((value) => ({
+      id: value.id,
+      target: value.nodes.map((node) => node.target),
+    })),
+    name,
+  ).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    name,
+  ).toBe(true);
+  await mkdir(".impeccable/review", { recursive: true });
+  await page.screenshot({
+    path: `.impeccable/review/${name}.png`,
+    animations: "disabled",
+  });
+}
+
+test("CSV import previews duplicates and uses encrypted atomic batches; selection changes folder and tags", async ({
+  page,
+}, info) => {
+  test.setTimeout(120000);
+  await login(page);
+  const one = `Synthetic import ${info.project.name} one`,
+    two = `Synthetic import ${info.project.name} two`,
+    secret = "SYNTHETIC-only-import-password";
+  await page.getByRole("button", { name: "Импорт", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Импорт записей" });
+  await dialog.getByLabel("Файл для импорта").setInputFiles({
+    name: "synthetic.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `name,username,password,folder\n${one},synthetic,${secret},VPN\n${two},synthetic,${secret},VPN\n${one},synthetic,${secret},VPN`,
+    ),
+  });
+  await expect(dialog).toContainText("Выбрано 2 из 3");
+  await expect(dialog).toContainText("Уже есть");
+  await expect(dialog).not.toContainText(secret);
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate(
+      (theme) =>
+        document.documentElement.classList.toggle("dark", theme === "dark"),
+      theme,
+    );
+    await audit(page, `${info.project.name}-${theme}-import-preview`);
+  }
+  const save = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/records/batch") &&
+      response.request().method() === "POST",
+  );
+  await dialog
+    .getByRole("button", { name: "Импортировать (2)", exact: true })
+    .click();
+  const result = await save;
+  expect(result.ok()).toBe(true);
+  expect(result.request().postData()).not.toContain(secret);
+  expect(result.request().postData()).not.toContain(one);
+  expect(result.request().postData()).not.toContain("synthetic");
+  expect((await result.json()).records).toHaveLength(2);
+  await expect(dialog).toBeHidden();
+  await page
+    .getByLabel("Поиск записей", { exact: true })
+    .fill(`Synthetic import ${info.project.name}`);
+  await page
+    .getByRole("checkbox", {
+      name: "Выбрать все показанные записи",
+      exact: true,
+    })
+    .check();
+  await expect(page.getByText("Выбрано: 2", { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Изменить выбранные", exact: true })
+    .click();
+  const bulk = page.getByRole("dialog", { name: "Изменить выбранные записи" });
+  await bulk.getByRole("button", { name: "Папка", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Поиск папок" })
+    .fill(`Bulk ${info.project.name}`);
+  await page.keyboard.press("Enter");
+  await audit(page, `${info.project.name}-bulk-folder`);
+  await bulk
+    .getByRole("button", { name: "Применить (2)", exact: true })
+    .click();
+  await expect(bulk).toBeHidden();
+  await expect(page.getByText("Выбрано: 0", { exact: true })).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: "Выбрать все показанные записи",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", { name: "Изменить выбранные", exact: true })
+    .click();
+  await bulk.getByLabel("Действие", { exact: true }).click();
+  await page
+    .getByRole("option", { name: "Добавить теги", exact: true })
+    .click();
+  await bulk
+    .getByRole("button", { name: "Добавить теги", exact: true })
+    .click();
+  await page.getByRole("combobox", { name: "Поиск тегов" }).fill("batch-tag");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await bulk
+    .getByRole("button", { name: "Применить (2)", exact: true })
+    .click();
+  await expect(bulk).toBeHidden();
+  await page
+    .getByRole("button", { name: `Открыть ${one}`, exact: true })
+    .click();
+  await expect(page.locator(".detail-pane")).toContainText(
+    `Bulk ${info.project.name}`,
+  );
+  await expect(page.locator(".detail-pane")).toContainText("batch-tag");
+  await page.getByRole("button", { name: "Закрыть сведения" }).click();
+  await page.getByLabel("Поиск записей", { exact: true }).fill("");
+  await page
+    .getByRole("checkbox", { name: `Выбрать ${one}`, exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", { name: `Выбрать ${two}`, exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "Изменить выбранные", exact: true })
+    .click();
+  await bulk.getByLabel("Действие", { exact: true }).click();
+  await page
+    .getByRole("option", { name: "Переместить в корзину", exact: true })
+    .click();
+  await bulk.getByRole("button", { name: "В корзину", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: `Открыть ${one}`, exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: `Открыть ${two}`, exact: true }),
+  ).toHaveCount(0);
+});
+
+test("encrypted drafts survive an immediate reload and restore after unlock; explicit discard deletes them", async ({
+  page,
+}, info) => {
+  test.setTimeout(90000);
+  await login(page);
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", { name: "Новая запись" });
+  const title = `Synthetic draft ${info.project.name}`,
+    secret = "SYNTHETIC-only-draft-password";
+  await editor.getByLabel("Название", { exact: true }).fill(title);
+  await editor.getByLabel("Пароль", { exact: true }).fill(secret);
+  await page.reload();
+  await unlock(page);
+  await expect(
+    page.getByRole("button", { name: `Открыть ${title}`, exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Черновики", exact: true }).click();
+  const drafts = page.getByRole("dialog", { name: "Личные черновики" });
+  await expect(drafts).toContainText(title);
+  await expect(drafts).not.toContainText(secret);
+  await audit(page, `${info.project.name}-encrypted-drafts`);
+  const persisted = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("custodian-personal", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(Error());
+    });
+    return await new Promise<unknown[]>((resolve, reject) => {
+      const request = db
+        .transaction("drafts", "readonly")
+        .objectStore("drafts")
+        .getAll();
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result);
+      };
+      request.onerror = () => reject(Error());
+    });
+  });
+  expect(JSON.stringify(persisted)).not.toContain(secret);
+  expect(JSON.stringify(persisted)).not.toContain(title);
+  await drafts
+    .getByRole("button", { name: "Восстановить", exact: true })
+    .click();
+  await expect(editor.getByLabel("Название", { exact: true })).toHaveValue(
+    title,
+  );
+  await expect(editor.getByLabel("Пароль", { exact: true })).toHaveValue(
+    secret,
+  );
+  await editor
+    .getByLabel("Заметка", { exact: true })
+    .fill("Synthetic restored note");
+  await editor.getByRole("button", { name: "Отмена", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Закрыть без сохранения?" });
+  await confirm
+    .getByRole("button", { name: "Не сохранять", exact: true })
+    .click();
+  await expect(editor).toBeHidden();
+  await expect(
+    page.getByRole("dialog", { name: "Новая запись", includeHidden: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Черновики", exact: true }).click();
+  await expect(drafts).toContainText("Черновиков нет");
+});
+
+test("TOTP QR is decoded locally from an image and preserves digits, algorithm and period", async ({
+  page,
+  context,
+}, info) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await login(page);
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", { name: "Новая запись" });
+  await editor
+    .getByRole("button", { name: "Сканировать QR для 2FA", exact: true })
+    .click();
+  const qr = page.getByRole("dialog", { name: "Добавить 2FA через QR" });
+  const uri =
+    "otpauth://totp/Synthetic:demo?secret=AAAAAAAAAAAAAAAA&issuer=Synthetic&algorithm=SHA256&digits=8&period=60";
+  const image = await QRCode.toBuffer(uri, { width: 512, margin: 4 });
+  const leaks: string[] = [];
+  page.on("request", (request) => {
+    if (request.postData()?.includes("AAAAAAAAAAAAAAAA"))
+      leaks.push(request.url());
+  });
+  await qr.getByLabel("Изображение с QR-кодом").setInputFiles({
+    name: "synthetic-qr.png",
+    mimeType: "image/png",
+    buffer: image,
+  });
+  await expect(qr).toContainText("8 цифр · 60 секунд · SHA256");
+  await audit(page, `${info.project.name}-qr-confirm`);
+  await qr
+    .getByRole("button", { name: "Использовать 2FA", exact: true })
+    .click();
+  await expect(
+    editor.getByLabel("Секрет TOTP / ссылка otpauth://", { exact: true }),
+  ).toHaveValue(uri);
+  await editor
+    .getByLabel("Название", { exact: true })
+    .fill(`Synthetic QR ${info.project.name}`);
+  await editor
+    .getByRole("button", { name: "Создать запись", exact: true })
+    .click();
+  await expect(page.locator(".detail-pane h2")).toHaveText(
+    `Synthetic QR ${info.project.name}`,
+  );
+  await page.getByRole("button", { name: "Показать код", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Копировать код 2FA", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toMatch(/^\d{8}$/);
+  expect(leaks).toEqual([]);
+});
+
+test("paste and camera stay local; late camera permissions are stopped after closing", async ({
+  page,
+}, info) => {
+  test.setTimeout(90000);
+  await login(page);
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", { name: "Новая запись" });
+  await editor
+    .getByRole("button", { name: "Сканировать QR для 2FA", exact: true })
+    .click();
+  const qr = page.getByRole("dialog", { name: "Добавить 2FA через QR" });
+  const uri =
+      "otpauth://totp/Synthetic:camera?secret=AAAAAAAAAAAAAAAA&issuer=Synthetic&digits=8&period=60&algorithm=SHA256",
+    buffer = await QRCode.toBuffer(uri, { width: 512, margin: 4 });
+  await page.evaluate(async (base64) => {
+    const blob = new Blob(
+        [Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))],
+        { type: "image/png" },
+      ),
+      transfer = new DataTransfer();
+    transfer.items.add(
+      new File([blob], "synthetic-paste.png", { type: "image/png" }),
+    );
+    window.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: transfer }),
+    );
+  }, buffer.toString("base64"));
+  await expect(qr).toContainText("8 цифр · 60 секунд · SHA256");
+  await qr.getByRole("button", { name: "Другой QR", exact: true }).click();
+  await page.evaluate(() => {
+    const state = window as Window & {
+      resolveMedia?: (stream: MediaStream) => void;
+    };
+    navigator.mediaDevices.getUserMedia = () =>
+      new Promise((resolve) => {
+        state.resolveMedia = resolve;
+      });
+  });
+  await qr
+    .getByRole("button", { name: "Использовать камеру", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          typeof (window as Window & { resolveMedia?: unknown }).resolveMedia,
+      ),
+    )
+    .toBe("function");
+  await page.keyboard.press("Escape");
+  await expect(qr).toBeHidden();
+  await page.evaluate(() => {
+    const state = window as Window & {
+      resolveMedia?: (stream: MediaStream) => void;
+      testStream?: MediaStream;
+    };
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 240;
+    state.testStream = canvas.captureStream(5);
+    state.resolveMedia!(state.testStream);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as Window & { testStream?: MediaStream })
+          .testStream!.getTracks()
+          .every((track) => track.readyState === "ended"),
+      ),
+    )
+    .toBe(true);
+  await editor
+    .getByRole("button", { name: "Сканировать QR для 2FA", exact: true })
+    .click();
+  await page.evaluate(async (base64) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    const image = new Image();
+    image.src = `data:image/png;base64,${base64}`;
+    await image.decode();
+    canvas.getContext("2d")!.drawImage(image, 0, 0);
+    const state = window as Window & { liveStream?: MediaStream };
+    state.liveStream = canvas.captureStream(5);
+    navigator.mediaDevices.getUserMedia = async () => state.liveStream!;
+  }, buffer.toString("base64"));
+  await qr
+    .getByRole("button", { name: "Использовать камеру", exact: true })
+    .click();
+  await expect(qr).toContainText("8 цифр · 60 секунд · SHA256");
+  expect(
+    await page.evaluate(() =>
+      (window as Window & { liveStream?: MediaStream })
+        .liveStream!.getTracks()
+        .every((track) => track.readyState === "ended"),
+    ),
+  ).toBe(true);
+  await audit(page, `${info.project.name}-camera-confirm`);
+});
+
+test("an uncertain save retries the same ciphertext and does not create a second record", async ({
+  page,
+}, info) => {
+  await login(page);
+  const title = `Synthetic retry ${info.project.name}`;
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", { name: "Новая запись" });
+  await editor.getByLabel("Название", { exact: true }).fill(title);
+  await editor
+    .getByLabel("Пароль", { exact: true })
+    .fill("SYNTHETIC-only-retry");
+  let firstPayload = "",
+    secondPayload = "",
+    requests = 0;
+  await page.route("**/api/records/batch", async (route) => {
+    requests++;
+    if (requests === 1) {
+      firstPayload = route.request().postData()!;
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      await route.abort("failed");
+    } else {
+      secondPayload = route.request().postData()!;
+      await route.continue();
+    }
+  });
+  await editor
+    .getByRole("button", { name: "Создать запись", exact: true })
+    .click();
+  await expect(
+    editor.getByRole("button", { name: "Повторить сохранение", exact: true }),
+  ).toBeVisible();
+  await expect(editor.getByLabel("Название", { exact: true })).toBeDisabled();
+  await editor
+    .getByRole("button", { name: "Повторить сохранение", exact: true })
+    .click();
+  await expect(page.locator(".detail-pane h2")).toHaveText(title);
+  expect(secondPayload).toBe(firstPayload);
+  expect(requests).toBe(2);
+  await page.getByRole("button", { name: "Закрыть сведения" }).click();
+  await expect(
+    page.getByRole("button", { name: `Открыть ${title}`, exact: true }),
+  ).toHaveCount(1);
+});

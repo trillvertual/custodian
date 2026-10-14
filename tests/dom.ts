@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { indexedDB } from "fake-indexeddb";
 import { vi } from "vitest";
 // Keep Node's byte-array realm for external WASM while using a real DOM for React.
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -27,6 +28,7 @@ for (const key of [
   "MouseEvent",
   "KeyboardEvent",
   "MutationObserver",
+  "DOMParser",
   "getComputedStyle",
   "URL",
 ] as const) {
@@ -37,3 +39,16 @@ vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
 );
 vi.stubGlobal("cancelAnimationFrame", clearTimeout);
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
+vi.stubGlobal("indexedDB", indexedDB);
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+HTMLElement.prototype.scrollIntoView = vi.fn();
+window.requestAnimationFrame = requestAnimationFrame;
+window.cancelAnimationFrame = cancelAnimationFrame;

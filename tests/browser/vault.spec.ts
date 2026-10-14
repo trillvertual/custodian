@@ -228,8 +228,8 @@ test("record editing, history, trash, clipboard and lock use real encrypted API"
   await page.getByLabel("Пароль", { exact: true }).fill(secret);
   const saved = page.waitForResponse(
     (response) =>
-      response.url().includes("/api/records/") &&
-      response.request().method() === "PUT",
+      response.url().endsWith("/api/records/batch") &&
+      response.request().method() === "POST",
   );
   await page
     .getByRole("button", { name: "Создать запись", exact: true })

@@ -1,6 +1,6 @@
 {
   "name": "@vault/web",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,10 +21,12 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@tabler/icons-react": "^3.49.0",
     "@vault/core": "*",
+    "@zxing/browser": "^0.1.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "lucide-react": "^1.52.0",
+    "papaparse": "^5.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "sonner": "^2.0.0",

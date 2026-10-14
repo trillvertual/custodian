@@ -150,6 +150,7 @@ jobs:
       - name: Check the exact published image
         env:
           CUSTODIAN_IMAGE: ${{ env.RELEASE_IMAGE }}@${{ steps.published-image.outputs.digest }}
+          CUSTODIAN_SMOKE_PROJECT: custodian-release-check
         run: |
           docker compose -p custodian-release-check pull app db
           docker compose -p custodian-release-check up -d --no-build --wait --wait-timeout 180

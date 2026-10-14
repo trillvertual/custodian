@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  batchSchema,
+  batchResultSchema,
+  batchLimit,
+  batchByteLimit,
+  type RecordBatch,
+  type BatchResult,
   ready,
   deriveLoginSecret,
   wrapPassword,
@@ -297,6 +303,90 @@ export function useVault() {
     await loadRecords();
     return id;
   }
+  function prepareBatch(
+    changes: {
+      data: VaultRecord;
+      record?: DecryptedRecord;
+      deleted?: boolean;
+    }[],
+  ) {
+    const currentKeys = keys.current;
+    if (!session || !currentKeys) throw new Error("Хранилище заблокировано.");
+    if (!changes.length || changes.length > batchLimit)
+      throw new Error(`Выберите от 1 до ${batchLimit} записей.`);
+    let estimatedBytes = 0;
+    const body: RecordBatch = batchSchema.parse({
+      id: crypto.randomUUID(),
+      epoch: session.user.epoch,
+      records: changes.map(({ data, record, deleted = false }) => {
+        const id = record?.id ?? crypto.randomUUID(),
+          baseVersion = record?.version ?? 0;
+        const parsed = recordSchema.parse(data);
+        estimatedBytes +=
+          Math.ceil(
+            (new TextEncoder().encode(JSON.stringify(parsed)).length + 16) / 3,
+          ) *
+            4 +
+          200;
+        if (estimatedBytes > batchByteLimit)
+          throw new Error(
+            "Операция превышает 8 МБ. Уменьшите количество записей.",
+          );
+        return {
+          id,
+          baseVersion,
+          deleted,
+          box: encryptJson(
+            parsed,
+            currentKeys.vaultKey,
+            recordContext(
+              session.user.vaultId,
+              id,
+              baseVersion + 1,
+              session.user.epoch,
+            ),
+          ),
+        };
+      }),
+    });
+    if (new TextEncoder().encode(JSON.stringify(body)).length > batchByteLimit)
+      throw new Error("Операция превышает 8 МБ. Уменьшите количество записей.");
+    return { body, keys: currentKeys };
+  }
+  async function executeBatch(operation: ReturnType<typeof prepareBatch>) {
+    if (
+      !session ||
+      keys.current !== operation.keys ||
+      session.user.epoch !== operation.body.epoch
+    )
+      throw new Error("Хранилище изменилось. Откройте операцию заново.");
+    const raw = await api<unknown>("/records/batch", "POST", operation.body);
+    const parsed = batchResultSchema.safeParse(raw);
+    if (!parsed.success)
+      throw new Error(
+        "Не удалось проверить результат. Повторите отправку того же запроса.",
+      );
+    const result = parsed.data;
+    if (keys.current !== operation.keys) return null;
+    if (
+      result.id !== operation.body.id ||
+      result.records.length !== operation.body.records.length ||
+      result.records.some(
+        (record) =>
+          !operation.body.records.some(
+            (item) =>
+              item.id === record.id && item.baseVersion + 1 === record.version,
+          ),
+      ) ||
+      new Set(result.records.map((record) => record.id)).size !==
+        result.records.length
+    )
+      throw new Error(
+        "Не удалось проверить результат. Повторите отправку того же запроса.",
+      );
+    await loadRecords();
+    return keys.current === operation.keys ? result : null;
+  }
   useEffect(() => {
     // Erase memory on document departure, including entry into the back/forward cache.
     const unload = () => lock();
@@ -331,6 +421,8 @@ export function useVault() {
     changePassword,
     logout,
     save,
+    prepareBatch,
+    executeBatch,
     loadRecords,
     lock,
     keys,

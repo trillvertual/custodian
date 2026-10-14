@@ -193,8 +193,8 @@ test("quick actions, recents, infrastructure presets and similar records", async
   await inspect(page, `${info.project.name}-similar-record`);
   const saved = page.waitForResponse(
     (response) =>
-      response.url().includes("/api/records/") &&
-      response.request().method() === "PUT",
+      response.url().endsWith("/api/records/batch") &&
+      response.request().method() === "POST",
   );
   await editor
     .getByRole("button", { name: "Создать запись", exact: true })

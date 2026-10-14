@@ -222,9 +222,17 @@ it("keeps a record usable when its saved TOTP secret cannot generate a code", as
 });
 
 it("saves a whitespace-padded otpauth link once and freezes edits while saving", async () => {
-  const saved = deferred<string>();
+  const saved = deferred<{
+    id: string;
+    records: { id: string; version: number }[];
+  }>();
   const store = fixtureStore();
-  store.save = vi.fn().mockReturnValue(saved.promise);
+  const operation = {
+    body: { id: recordId, epoch: 1, records: [] },
+    keys: store.keys.current!,
+  };
+  store.prepareBatch = vi.fn().mockReturnValue(operation);
+  store.executeBatch = vi.fn().mockReturnValue(saved.promise);
   const onSaved = vi.fn();
   render(
     <RecordEditor
@@ -246,17 +254,21 @@ it("saves a whitespace-padded otpauth link once and freezes edits while saving",
   const form = screen.getByRole("dialog").querySelector("form")!;
   fireEvent.submit(form);
   fireEvent.submit(form);
-  expect(store.save).toHaveBeenCalledTimes(1);
-  expect(vi.mocked(store.save).mock.calls[0]![0].totp).toEqual({
-    secret: "JBSWY3DPEHPK3PXP",
-    digits: 8,
-    period: 60,
-    algorithm: "SHA256",
-  });
+  expect(store.executeBatch).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(store.prepareBatch).mock.calls[0]![0][0]!.data.totp).toEqual(
+    {
+      secret: "JBSWY3DPEHPK3PXP",
+      digits: 8,
+      period: 60,
+      algorithm: "SHA256",
+    },
+  );
   expect(title.closest("fieldset")!.disabled).toBe(true);
   fireEvent.change(title, { target: { value: "Unsaved later edit" } });
   expect((title as HTMLInputElement).value).toBe("Synthetic TOTP record");
-  await act(async () => saved.resolve(recordId));
+  await act(async () =>
+    saved.resolve({ id: recordId, records: [{ id: recordId, version: 1 }] }),
+  );
   expect(onSaved).toHaveBeenCalledOnce();
 });
 

@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS identities(provider text NOT NULL, subject text NOT N
 CREATE TABLE IF NOT EXISTS flows(token_hash text PRIMARY KEY, purpose text NOT NULL, payload jsonb NOT NULL, expires_at timestamptz NOT NULL);
 CREATE TABLE IF NOT EXISTS audit(id bigserial PRIMARY KEY, user_id uuid REFERENCES users(id), action text NOT NULL, target text, detail jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_login_version smallint NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS record_batches(id uuid PRIMARY KEY, actor_id uuid NOT NULL REFERENCES users(id), epoch integer NOT NULL, payload_hash text NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS record_batches_created_at ON record_batches(created_at);
+INSERT INTO schema_migrations(version) VALUES(3) ON CONFLICT DO NOTHING;
 INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
 INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;
 `;
