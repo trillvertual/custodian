@@ -13,8 +13,8 @@ keywords = ["SVR1."]
 id = "generic-api-key"
 
   [[rules.allowlists]]
-  description = "RFC 6238 public test vector, only in its two synthetic fixtures"
+  description = "RFC 6238 public test vector, only in its three synthetic fixtures"
   condition = "AND"
-  paths = ['''(^|/)tests/(crypto\.test|dev-server)\.ts$''']
+  paths = ['''(^|/)tests/(crypto\.test\.ts|dev-server\.ts|productivity\.test\.tsx)$''']
   regexTarget = "secret"
   regexes = ['''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''']

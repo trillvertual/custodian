@@ -46,6 +46,7 @@ export function RecordDetail({
   store,
   onClose,
   onEdit,
+  onSimilar,
   open,
   onExitComplete,
 }: {
@@ -53,6 +54,7 @@ export function RecordDetail({
   store: VaultStore;
   onClose: () => void;
   onEdit: () => void;
+  onSimilar?: () => void;
   open: boolean;
   onExitComplete: () => void;
 }) {
@@ -572,6 +574,12 @@ export function RecordDetail({
                 <Trash2 size={17} />
                 <span>В корзину</span>
               </Button>
+              {onSimilar && (
+                <Button variant="outline" disabled={busy} onClick={onSimilar}>
+                  <Copy size={15} />
+                  Создать похожую
+                </Button>
+              )}
               <Button variant="outline" disabled={busy} onClick={onEdit}>
                 <Pencil size={15} />
                 Редактировать

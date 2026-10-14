@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/trillvertual/custodian/actions/workflows/ci.yml/badge.svg)](https://github.com/trillvertual/custodian/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-365C72)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.2.0-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.2.0)
+[![Release](https://img.shields.io/badge/release-v0.3.0-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.3.0)
 
 Self-hosted менеджер общих доступов для команды VPN-сервиса. Одна установка, один владелец и приглашённые администраторы. Все активные участники видят и редактируют все записи.
 
@@ -39,7 +39,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
     </td>
     <td width="50%" valign="top">
       <strong>Быстрый поиск</strong><br>
-      <sub>Доступ к записям через Ctrl+K</sub><br><br>
+      <sub>Копирование логина, секрета и 2FA через Ctrl+K</sub><br><br>
       <a href="docs/screenshots/search-dark.png">
         <img src="docs/screenshots/search-dark.png" alt="Custodian: поиск записей с клавиатуры" width="100%">
       </a>
@@ -53,6 +53,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
 
 - Логины, пароли, API-токены, SSH-ключи, заметки и дополнительные секретные поля.
 - Папки, теги, избранное, поиск, генератор паролей, корзина и история версий.
+- Быстрые действия из поиска, недавние записи, шаблоны VPN-инфраструктуры и создание похожей записи с очищенными значениями.
 - TOTP: Base32 или `otpauth://`, SHA-1/SHA-256/SHA-512, 6/8 цифр, 30/60 секунд.
 - Один пароль для входа и открытия записей, либо Passkey с WebAuthn PRF.
 - Включение и отключение способов входа с защитой последнего рабочего способа.
@@ -72,7 +73,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
 
 ## Запуск на VPS
 
-Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.2.0](https://github.com/trillvertual/custodian/releases/tag/v0.2.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
+Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.3.0](https://github.com/trillvertual/custodian/releases/tag/v0.3.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
 
 Нужны Node.js >=22.12 для настройки, Docker Compose и HTTPS reverse proxy.
 

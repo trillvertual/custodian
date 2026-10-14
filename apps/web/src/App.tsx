@@ -40,6 +40,8 @@ import { Settings as SettingsPage, Activity } from "./components/settings";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { RwpPromo } from "./components/rwp-promo";
+import { similarRecord } from "./lib/record-presets";
+import { useRecentRecords } from "./lib/recent-records";
 import { SearchPalette } from "./components/search-palette";
 import { recoveryDownload } from "./lib/api";
 import type { VaultRecord } from "../../../packages/core/src/index.ts";
@@ -178,13 +180,29 @@ function VaultShell({
     [search, setSearch] = useState(""),
     [searchOpen, setSearchOpen] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
-    [editing, setEditing] = useState<string | null>(null),
+    [editing, setEditing] = useState<{
+      key: string;
+      recordId?: string;
+      initialData?: VaultRecord;
+    } | null>(null),
     [detailOpen, setDetailOpen] = useState(false),
     [editorOpen, setEditorOpen] = useState(false),
     [sort, setSort] = useState<"updated" | "title">("updated"),
     [refreshing, setRefreshing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const user = store.session!.user;
+  const recent = useRecentRecords(user.vaultId, user.id);
+  function openRecord(id: string) {
+    if (!store.keys.current) return;
+    recent.remember(id);
+    setSelected(id);
+    setDetailOpen(true);
+  }
+  function createRecord(initialData?: VaultRecord) {
+    setDetailOpen(false);
+    setEditing({ key: crypto.randomUUID(), initialData });
+    setEditorOpen(true);
+  }
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -244,10 +262,9 @@ function VaultShell({
         : b.updatedAt.localeCompare(a.updatedAt),
     );
   const record = store.records.find((r) => r.id === selected),
-    editRecord =
-      editing && editing !== "new"
-        ? store.records.find((r) => r.id === editing)
-        : undefined;
+    editRecord = editing?.recordId
+      ? store.records.find((r) => r.id === editing?.recordId)
+      : undefined;
   const noMethods =
     !store.session!.credentials.length &&
     !store.session!.identities.length &&
@@ -455,8 +472,7 @@ function VaultShell({
                       size="sm"
                       aria-label="Добавить запись"
                       onClick={() => {
-                        setEditing("new");
-                        setEditorOpen(true);
+                        createRecord();
                       }}
                     >
                       <IconPlus stroke={1.5} />
@@ -511,8 +527,7 @@ function VaultShell({
                       key={r.id}
                       className="cursor-pointer"
                       onClick={() => {
-                        setSelected(r.id);
-                        setDetailOpen(true);
+                        openRecord(r.id);
                       }}
                     >
                       <TableCell className="pl-6">
@@ -522,8 +537,7 @@ function VaultShell({
                             aria-label={`Открыть ${r.data.title}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelected(r.id);
-                              setDetailOpen(true);
+                              openRecord(r.id);
                             }}
                           >
                             {r.data.title}
@@ -622,12 +636,17 @@ function VaultShell({
               <RecordDetail
                 key={record.id}
                 open={detailOpen}
-                onExitComplete={() => setSelected(null)}
+                onExitComplete={() =>
+                  setSelected((current) =>
+                    current === record.id ? null : current,
+                  )
+                }
                 record={record}
                 store={store}
                 onClose={() => setDetailOpen(false)}
+                onSimilar={() => createRecord(similarRecord(record.data))}
                 onEdit={() => {
-                  setEditing(record.id);
+                  setEditing({ key: crypto.randomUUID(), recordId: record.id });
                   setEditorOpen(true);
                 }}
               />
@@ -639,27 +658,31 @@ function VaultShell({
         open={searchOpen}
         onOpenChange={setSearchOpen}
         records={live}
+        store={store}
+        recentIds={recent.ids}
+        onRemember={recent.remember}
         onSelect={(id) => {
           setPage("vault");
           setFilter("all");
           setFolder("");
           setSearch("");
-          setSelected(id);
-          setDetailOpen(true);
+          openRecord(id);
         }}
       />
       {editing && (
         <RecordEditor
-          key={editing}
+          key={editing.key}
           store={store}
           record={editRecord}
+          initialData={editing.initialData}
           open={editorOpen}
           onClose={() => setEditorOpen(false)}
-          onExitComplete={() => setEditing(null)}
+          onExitComplete={() =>
+            setEditing((current) => (current === editing ? null : current))
+          }
           onSaved={(id) => {
             setEditorOpen(false);
-            setSelected(id);
-            setDetailOpen(true);
+            openRecord(id);
             toast.success("Запись сохранена.");
           }}
         />
