@@ -566,10 +566,28 @@ code,
 }
 .dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 8px;
+}
+[data-slot="dialog-footer"] {
+  flex-wrap: wrap;
+}
+/* Dialog width, rather than viewport width, limits action labels. Keep the
+   entire action reachable, including one label wider than the dialog itself. */
+.dialog-content
+  [data-slot="button"]:not([data-size^="icon"]):not(.choice-trigger),
+.detail-actions > [data-slot="button"] {
+  max-width: 100%;
+  height: auto;
+  min-height: 36px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dialog-content [data-slot="button"][data-size="sm"] {
+  min-height: 32px;
 }
 .form-stack {
   display: flex;
@@ -1186,9 +1204,6 @@ code,
   .detail-meta {
     flex-direction: column;
   }
-  .dialog-actions {
-    flex-wrap: wrap;
-  }
   .members-table th,
   .members-table td {
     padding: 12px;
@@ -1663,6 +1678,8 @@ textarea {
 }
 .draft-row-actions {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 8px;
 }
 .draft-status {

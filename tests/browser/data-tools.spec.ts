@@ -63,6 +63,159 @@ async function audit(page: Page, name: string) {
   });
 }
 
+test("dialog actions and long labels stay inside their clipping containers at every width", async ({
+  page,
+}, info) => {
+  test.setTimeout(90000);
+  await login(page);
+  const widths = [320, 390, 512, 760, 761, 900, 1440, 1920];
+  async function fits(dialog: ReturnType<Page["getByRole"]>) {
+    await expect(dialog).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    for (const viewport of [
+      ...widths.map((width) => ({ width, height: 900 })),
+      { width: 900, height: 320 },
+      { width: 320, height: 480 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => done())),
+          ),
+      );
+      const clipped = await dialog.evaluate((element) => {
+        const failures: string[] = [];
+        for (const button of element.querySelectorAll<HTMLElement>(
+          '[data-slot="button"]',
+        )) {
+          if (!button.getClientRects().length) continue;
+          const box = button.getBoundingClientRect();
+          let left = 0,
+            right = innerWidth;
+          for (
+            let parent = button.parentElement;
+            parent;
+            parent = parent.parentElement
+          ) {
+            if (
+              /auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflowX)
+            ) {
+              const clip = parent.getBoundingClientRect();
+              left = Math.max(left, clip.left + parent.clientLeft);
+              right = Math.min(
+                right,
+                clip.left + parent.clientLeft + parent.clientWidth,
+              );
+            }
+          }
+          if (
+            box.left < left - 1 ||
+            box.right > right + 1 ||
+            button.scrollWidth > button.clientWidth + 1 ||
+            button.scrollHeight > button.clientHeight + 1
+          )
+            failures.push(
+              button.textContent?.trim() ||
+                button.getAttribute("aria-label") ||
+                "button",
+            );
+        }
+        return failures;
+      });
+      expect(
+        clipped,
+        `${viewport.width}×${viewport.height}: action is clipped`,
+      ).toEqual([]);
+    }
+  }
+  await page
+    .getByRole("button", { name: "Добавить запись", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", {
+    name: "Новая запись",
+    exact: true,
+  });
+  await editor
+    .getByLabel("Название", { exact: true })
+    .fill("Synthetic layout draft");
+  await editor.getByRole("button", { name: "Сканировать QR для 2FA" }).click();
+  const qr = page.getByRole("dialog", { name: "Добавить 2FA через QR" });
+  await fits(qr);
+  await qr.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await editor.getByRole("button", { name: "Отмена", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Закрыть без сохранения?" });
+  await expect(confirm.locator(".dialog-actions button")).toHaveCount(3);
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate(
+      (theme) =>
+        document.documentElement.classList.toggle("dark", theme === "dark"),
+      theme,
+    );
+    await fits(confirm);
+    await page.setViewportSize({
+      width: info.project.name === "tools-mobile" ? 390 : 1440,
+      height: 900,
+    });
+    await audit(page, `${info.project.name}-${theme}-discard-actions`);
+  }
+  await confirm
+    .getByRole("button", { name: "Продолжить редактирование", exact: true })
+    .click();
+  await expect(confirm).toBeHidden();
+  await expect(editor.getByLabel("Название", { exact: true })).toHaveValue(
+    "Synthetic layout draft",
+  );
+  await editor.getByRole("button", { name: "Отмена", exact: true }).click();
+  await confirm
+    .getByRole("button", { name: "Сохранить черновик и закрыть", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Новая запись", includeHidden: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Черновики", exact: true }).click();
+  const drafts = page.getByRole("dialog", { name: "Личные черновики" });
+  await expect(drafts).toContainText("Synthetic layout draft");
+  await fits(drafts);
+  await drafts.getByRole("button", { name: "Удалить", exact: true }).click();
+  const remove = page.getByRole("dialog", {
+    name: "Удалить черновик?",
+    exact: true,
+  });
+  await fits(remove);
+  await remove
+    .getByRole("button", { name: "Удалить черновик", exact: true })
+    .click();
+  await expect(drafts).toContainText("Черновиков нет");
+  await drafts
+    .locator(".dialog-actions")
+    .getByRole("button", { name: "Закрыть", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Открыть Cloudflare", exact: true })
+    .click();
+  const record = page.getByRole("dialog", { name: "Cloudflare", exact: true });
+  await fits(record);
+  await record
+    .getByRole("button", { name: "Переместить в корзину", exact: true })
+    .click();
+  await fits(
+    page.getByRole("dialog", {
+      name: "Переместить запись в корзину?",
+      exact: true,
+    }),
+  );
+  await page
+    .getByRole("dialog", { name: "Переместить запись в корзину?", exact: true })
+    .getByRole("button", { name: "Отмена", exact: true })
+    .click();
+  await record
+    .getByRole("button", { name: "Закрыть сведения", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Импорт", exact: true }).click();
+  await fits(page.getByRole("dialog", { name: "Импорт записей", exact: true }));
+});
+
 test("CSV import previews duplicates and uses encrypted atomic batches; selection changes folder and tags", async ({
   page,
 }, info) => {
