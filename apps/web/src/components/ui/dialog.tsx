@@ -15,6 +15,7 @@ export function Dialog({
   children,
   wide = false,
   onExitComplete,
+  focusContent = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -23,6 +24,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
   onExitComplete?: () => void;
+  focusContent?: boolean;
 }) {
   const exit = useDialogExit(open, onExitComplete);
   return (
@@ -30,6 +32,14 @@ export function Dialog({
       <DialogContent
         className={`dialog-content ${wide ? "dialog-wide" : ""}`}
         {...exit}
+        onOpenAutoFocus={
+          focusContent
+            ? (event) => {
+                event.preventDefault();
+                (event.target as HTMLElement).focus({ preventScroll: true });
+              }
+            : undefined
+        }
       >
         <DialogHeader className="dialog-heading">
           <DialogTitle>{title}</DialogTitle>

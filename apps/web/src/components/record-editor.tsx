@@ -1,7 +1,8 @@
 import { Form } from "./ui/form";
-import { useRef, useState, type FormEvent } from "react";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { useRef, useState, useMemo, type FormEvent } from "react";
+import { Plus, Trash2, RefreshCw, QrCode } from "lucide-react";
 import {
+  type DraftBody,
   recordSchema,
   generatePassword,
   normalizeTotp,
@@ -9,6 +10,10 @@ import {
   type DecryptedRecord,
 } from "../../../../packages/core/src/index.ts";
 import type { VaultStore } from "../lib/store";
+import { ApiError } from "../lib/api";
+import { useDraft } from "../lib/use-draft";
+import { TotpQr } from "./qr-totp";
+import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { ChoicePicker } from "./ui/choice-picker";
@@ -41,6 +46,8 @@ export function RecordEditor({
   open,
   onExitComplete,
   initialData,
+  draftData,
+  draftId: restoredDraftId,
 }: {
   store: VaultStore;
   record?: DecryptedRecord;
@@ -49,15 +56,22 @@ export function RecordEditor({
   open: boolean;
   onExitComplete: () => void;
   initialData?: VaultRecord;
+  draftData?: DraftBody;
+  draftId?: string;
 }) {
+  const [baseRecord] = useState(() => record);
   const [data, setData] = useState<VaultRecord>(
-      record
-        ? structuredClone(record.data)
-        : initialData
-          ? structuredClone(initialData)
-          : blankRecord(),
+      draftData
+        ? structuredClone(draftData.data)
+        : record
+          ? structuredClone(record.data)
+          : initialData
+            ? structuredClone(initialData)
+            : blankRecord(),
     ),
-    [totpInput, setTotpInput] = useState(record?.data.totp?.secret ?? ""),
+    [totpInput, setTotpInput] = useState(
+      draftData?.totpInput ?? record?.data.totp?.secret ?? "",
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [discard, setDiscard] = useState(false),
@@ -65,14 +79,55 @@ export function RecordEditor({
   const [templateId, setTemplateId] = useState("blank"),
     [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const saving = useRef(false);
-  function change<K extends keyof VaultRecord>(name: K, value: VaultRecord[K]) {
+  const operation = useRef<ReturnType<VaultStore["prepareBatch"]> | null>(null);
+  const [pendingSave, setPendingSave] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [draftId] = useState(() => restoredDraftId ?? crypto.randomUUID());
+  const draftBody = useMemo<DraftBody>(
+    () => ({
+      v: 1,
+      data,
+      totpInput,
+      recordId:
+        baseRecord?.id ?? operation.current?.body.records[0]?.id ?? null,
+      baseVersion: baseRecord?.version ?? 0,
+      epoch: baseRecord?.epoch ?? store.session!.user.epoch,
+    }),
+    [data, totpInput, baseRecord, pendingSave, store.session!.user.epoch],
+  );
+  const draft = useDraft(store, draftId, draftBody, dirty || !!draftData);
+  async function closeWithDraft(keep: boolean) {
     if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    const keys = store.keys.current;
+    try {
+      if (keep) await draft.flush();
+      else await draft.forget();
+      if (keys !== null && store.keys.current === keys) {
+        setDiscard(false);
+        onClose();
+      }
+    } catch {
+      setError(
+        keep
+          ? "Не удалось сохранить черновик. Оставьте форму открытой или закройте без сохранения."
+          : "Не удалось удалить локальный черновик. Попробуйте снова.",
+      );
+      setDiscard(false);
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  }
+  function change<K extends keyof VaultRecord>(name: K, value: VaultRecord[K]) {
+    if (saving.current || operation.current) return;
     setData((d) => ({ ...d, [name]: value }));
     setDirty(true);
   }
   const close = () => (dirty ? setDiscard(true) : onClose());
   function applyTemplate(id: string) {
-    if (saving.current) return;
+    if (saving.current || operation.current) return;
     setData(recordFromTemplate(id));
     setTotpInput("");
     setTemplateId(id);
@@ -91,8 +146,8 @@ export function RecordEditor({
       const parsed = recordSchema.safeParse({
         ...data,
         totp: normalizedInput
-          ? normalizedInput === record?.data.totp?.secret.trim()
-            ? record.data.totp
+          ? normalizedInput === data.totp?.secret.trim()
+            ? data.totp
             : normalizeTotp(normalizedInput)
           : null,
       });
@@ -109,9 +164,27 @@ export function RecordEditor({
         );
       }
       const currentKeys = store.keys.current;
-      const id = await store.save(parsed.data, record);
-      if (store.keys.current === currentKeys) onSaved(id);
+      const request =
+        operation.current ??
+        store.prepareBatch([{ data: parsed.data, record: baseRecord }]);
+      operation.current = request;
+      setPendingSave(true);
+      const result = await store.executeBatch(request);
+      if (result && store.keys.current === currentKeys) {
+        void draft
+          .forget()
+          .catch(() =>
+            toast.error(
+              "Запись сохранена. Локальный черновик нужно удалить вручную.",
+            ),
+          );
+        onSaved(result.records[0]!.id);
+      }
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        operation.current = null;
+        setPendingSave(false);
+      }
       setError(e instanceof Error ? e.message : "Не удалось сохранить запись.");
     } finally {
       saving.current = false;
@@ -133,10 +206,10 @@ export function RecordEditor({
         <Form onSubmit={submit} className="form-stack record-form">
           <div className="record-form-fields">
             <fieldset
-              disabled={busy}
+              disabled={busy || pendingSave}
               className="record-form-fieldset form-stack"
             >
-              {!record && !initialData && (
+              {!record && !initialData && !draftData && (
                 <div className="field">
                   <label htmlFor="record-template">Шаблон</label>
                   <Select
@@ -165,7 +238,7 @@ export function RecordEditor({
                   </Select>
                 </div>
               )}
-              {initialData && !record && (
+              {initialData && !record && !draftData && (
                 <p className="similar-record-hint">
                   Тип, папка, теги и названия полей перенесены. Значения,
                   заметка и 2FA очищены.
@@ -305,6 +378,15 @@ export function RecordEditor({
                 maxLength={4096}
                 hint="Для генерации кодов 2FA. Поле необязательное."
               />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setQrOpen(true)}
+              >
+                <QrCode size={16} />
+                Сканировать QR для 2FA
+              </Button>
               <div className="custom-fields-heading">
                 <h3>Дополнительные поля</h3>
                 <Button
@@ -390,6 +472,23 @@ export function RecordEditor({
               <ErrorMessage error={error} />
             </fieldset>
           </div>
+          {pendingSave && (
+            <p className="draft-status">
+              Повторное сохранение проверит результат того же запроса.
+            </p>
+          )}
+          {draft.status !== "idle" && (
+            <div
+              className="draft-status"
+              role={draft.status === "error" ? "alert" : undefined}
+            >
+              {draft.status === "error"
+                ? draft.error
+                : draft.status === "saved"
+                  ? "Черновик сохранён на этом устройстве."
+                  : "Сохранение зашифрованного черновика…"}
+            </div>
+          )}
           <div className="dialog-actions">
             <Button
               type="button"
@@ -400,11 +499,26 @@ export function RecordEditor({
               Отмена
             </Button>
             <Submit busy={busy}>
-              {record ? "Сохранить изменения" : "Создать запись"}
+              {pendingSave
+                ? "Повторить сохранение"
+                : record
+                  ? "Сохранить изменения"
+                  : "Создать запись"}
             </Submit>
           </div>
         </Form>
       </Dialog>
+      <TotpQr
+        open={qrOpen}
+        store={store}
+        onClose={() => setQrOpen(false)}
+        onUse={(uri, issuer) => {
+          if (saving.current || operation.current) return;
+          setTotpInput(uri);
+          setDirty(true);
+          if (!data.title && issuer) change("title", issuer);
+        }}
+      />
       <Dialog
         open={pendingTemplate !== null}
         onOpenChange={(next) => {
@@ -430,7 +544,7 @@ export function RecordEditor({
         open={discard}
         onOpenChange={setDiscard}
         title="Закрыть без сохранения?"
-        description="Изменения в этой форме будут потеряны."
+        description="Можно сохранить зашифрованный черновик на этом устройстве или удалить его."
       >
         <div className="dialog-actions">
           <Button variant="outline" onClick={() => setDiscard(false)}>
@@ -438,12 +552,13 @@ export function RecordEditor({
           </Button>
           <Button
             variant="destructive"
-            onClick={() => {
-              setDiscard(false);
-              onClose();
-            }}
+            disabled={busy}
+            onClick={() => void closeWithDraft(false)}
           >
             Не сохранять
+          </Button>
+          <Button disabled={busy} onClick={() => void closeWithDraft(true)}>
+            Сохранить черновик и закрыть
           </Button>
         </div>
       </Dialog>

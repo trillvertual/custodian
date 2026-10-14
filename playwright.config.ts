@@ -20,9 +20,14 @@ export default defineConfig({
       : {},
   },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1440, height: 900 } } },
+    {
+      name: "desktop",
+      testIgnore: "data-tools.spec.ts",
+      use: { viewport: { width: 1440, height: 900 } },
+    },
     {
       name: "mobile",
+      testIgnore: "data-tools.spec.ts",
       use: {
         viewport: { width: 390, height: 844 },
         isMobile: true,
@@ -30,9 +35,27 @@ export default defineConfig({
         baseURL: "http://127.0.0.1:3011",
       },
     },
+    {
+      name: "tools-desktop",
+      testMatch: "data-tools.spec.ts",
+      use: {
+        viewport: { width: 1440, height: 900 },
+        baseURL: "http://127.0.0.1:3012",
+      },
+    },
+    {
+      name: "tools-mobile",
+      testMatch: "data-tools.spec.ts",
+      use: {
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        baseURL: "http://127.0.0.1:3013",
+      },
+    },
   ],
   // Separate synthetic APIs keep device runs independent and below the real login limiter.
-  webServer: [3010, 3011].map((port) => ({
+  webServer: [3010, 3011, 3012, 3013].map((port) => ({
     command: `APP_URL=http://127.0.0.1:${port} PORT=${port} npx tsx tests/dev-server.ts`,
     url: `http://127.0.0.1:${port}/api/health`,
     reuseExistingServer: false,

@@ -293,3 +293,16 @@ export function generatePassword(length = 28): string {
     () => alphabet[sodium.randombytes_uniform(alphabet.length)],
   ).join("");
 }
+// A private, domain-separated local key; other vault members cannot open drafts.
+export function deriveLocalDraftKey(
+  privateKey: Uint8Array,
+  scope: string,
+): Uint8Array {
+  if (privateKey.length !== 32)
+    throw new Error("Недействительный личный ключ.");
+  return sodium.crypto_generichash(
+    32,
+    `custodian:personal-draft-key:v1:${scope}`,
+    privateKey,
+  );
+}

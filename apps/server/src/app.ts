@@ -33,6 +33,7 @@ import {
   passwordHash,
   verifyPassword,
 } from "./security.ts";
+import { registerRecordBatch } from "./records-batch.ts";
 import { registerOAuth } from "./oauth.ts";
 export class HttpError extends Error {
   constructor(
@@ -228,12 +229,13 @@ export async function buildApp(
   });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
   app.addHook("onRequest", async (req, reply) => {
-    if (!req.url.startsWith("/api/")) return;
-    reply.header("Cache-Control", "no-store");
     reply.header(
       "Permissions-Policy",
-      "camera=(), microphone=(), geolocation=()",
+      "camera=(self), microphone=(), geolocation=()",
     );
+    if (!req.url.startsWith("/api/")) return;
+    reply.header("Cache-Control", "no-store");
+
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
       req.headers.origin !== config.origin
@@ -272,6 +274,10 @@ export async function buildApp(
         })),
       });
     const status = Number((error as { statusCode?: number }).statusCode ?? 500);
+    if (status === 429)
+      return reply.code(429).send({
+        error: "Слишком много попыток. Подождите минуту и попробуйте снова.",
+      });
     if (status >= 500) {
       req.log.error({ err: error }, "Request failed");
       return reply
@@ -798,6 +804,7 @@ export async function buildApp(
     });
     return { ok: true };
   });
+  registerRecordBatch(app, db);
   app.get("/api/records", async (req) => {
     active(req);
     return (

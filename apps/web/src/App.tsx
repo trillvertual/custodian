@@ -1,5 +1,5 @@
 import { Checkbox } from "./components/ui/checkbox";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   IconDatabase,
   IconStar,
@@ -28,7 +28,15 @@ import {
   TableHead,
   TableCell,
 } from "./components/ui/table";
-import { KeyRound, RefreshCw, Download, Check } from "lucide-react";
+import {
+  KeyRound,
+  RefreshCw,
+  Download,
+  Check,
+  Upload,
+  FilePenLine,
+  X,
+} from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useVault, type VaultStore } from "./lib/store";
 import { AuthScreen } from "./components/auth";
@@ -44,7 +52,23 @@ import { similarRecord } from "./lib/record-presets";
 import { useRecentRecords } from "./lib/recent-records";
 import { SearchPalette } from "./components/search-palette";
 import { recoveryDownload } from "./lib/api";
-import type { VaultRecord } from "../../../packages/core/src/index.ts";
+import type {
+  DraftBody,
+  VaultRecord,
+} from "../../../packages/core/src/index.ts";
+const RecordImport = lazy(() =>
+  import("./components/record-import").then((module) => ({
+    default: module.RecordImport,
+  })),
+);
+const RecordBulk = lazy(() =>
+  import("./components/record-bulk").then((module) => ({
+    default: module.RecordBulk,
+  })),
+);
+const Drafts = lazy(() =>
+  import("./components/drafts").then((module) => ({ default: module.Drafts })),
+);
 const icons = {
   login: IconWorld,
   token: IconKey,
@@ -184,11 +208,23 @@ function VaultShell({
       key: string;
       recordId?: string;
       initialData?: VaultRecord;
+      draftData?: DraftBody;
+      draftId?: string;
     } | null>(null),
     [detailOpen, setDetailOpen] = useState(false),
     [editorOpen, setEditorOpen] = useState(false),
     [sort, setSort] = useState<"updated" | "title">("updated"),
     [refreshing, setRefreshing] = useState(false);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [importMounted, setImportMounted] = useState(false),
+    [importOpen, setImportOpen] = useState(false);
+  const [draftMounted, setDraftMounted] = useState(false),
+    [draftOpen, setDraftOpen] = useState(false);
+  const [bulkIds, setBulkIds] = useState<string[] | null>(null),
+    [bulkOpen, setBulkOpen] = useState(false);
+  useEffect(() => {
+    setSelection(new Set());
+  }, [filter, folder, page, search]);
   const searchRef = useRef<HTMLInputElement>(null);
   const user = store.session!.user;
   const recent = useRecentRecords(user.vaultId, user.id);
@@ -207,7 +243,7 @@ function VaultShell({
     const listener = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        if (editing) return;
+        if (editing || importMounted || draftMounted || bulkIds) return;
         setDetailOpen(false);
         setSearchOpen((open) => !open);
       }
@@ -221,7 +257,7 @@ function VaultShell({
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [editing]);
+  }, [editing, importMounted, draftMounted, bulkIds]);
   const live = store.records.filter((r) => !r.deletedAt),
     folders = Array.from(
       new Set(live.map((r) => r.data.folder).filter(Boolean)),
@@ -482,6 +518,73 @@ function VaultShell({
                 </>
               }
             />
+            {filter !== "trash" && (
+              <div className="vault-tools">
+                <div className="vault-tools-group">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !!editing || importMounted || draftMounted || !!bulkIds
+                    }
+                    onClick={() => {
+                      setDetailOpen(false);
+                      setImportMounted(true);
+                      setImportOpen(true);
+                    }}
+                  >
+                    <Upload size={15} />
+                    Импорт
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !!editing || importMounted || draftMounted || !!bulkIds
+                    }
+                    onClick={() => {
+                      setDetailOpen(false);
+                      setDraftMounted(true);
+                      setDraftOpen(true);
+                    }}
+                  >
+                    <FilePenLine size={15} />
+                    Черновики
+                  </Button>
+                </div>
+                <div className="vault-tools-group">
+                  <span className="muted">
+                    Выбрано:{" "}
+                    {rows.filter((record) => selection.has(record.id)).length}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!rows.some((record) => selection.has(record.id))}
+                    onClick={() => {
+                      setDetailOpen(false);
+                      setBulkIds(
+                        rows
+                          .filter((record) => selection.has(record.id))
+                          .map((record) => record.id),
+                      );
+                      setBulkOpen(true);
+                    }}
+                  >
+                    Изменить выбранные
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Снять выбор записей"
+                    disabled={!selection.size}
+                    onClick={() => setSelection(new Set())}
+                  >
+                    <X size={16} />
+                  </Button>
+                </div>
+              </div>
+            )}
             <Card className="records-card gap-0 overflow-hidden py-0">
               <CardHeadRow title={pageTitle} count={rows.length}>
                 <Input
@@ -496,6 +599,29 @@ function VaultShell({
               <Table className="records-table">
                 <TableHeader>
                   <TableRow>
+                    {filter !== "trash" && (
+                      <TableHead className="selection-column">
+                        <Checkbox
+                          aria-label="Выбрать все показанные записи"
+                          disabled={!rows.length}
+                          checked={
+                            rows.length > 0 &&
+                            rows.every((record) => selection.has(record.id))
+                              ? true
+                              : rows.some((record) => selection.has(record.id))
+                                ? "indeterminate"
+                                : false
+                          }
+                          onCheckedChange={(checked) =>
+                            setSelection(
+                              checked === true
+                                ? new Set(rows.map((record) => record.id))
+                                : new Set(),
+                            )
+                          }
+                        />
+                      </TableHead>
+                    )}
                     <TableHead
                       className="pl-6"
                       aria-sort={sort === "title" ? "ascending" : "none"}
@@ -530,6 +656,25 @@ function VaultShell({
                         openRecord(r.id);
                       }}
                     >
+                      {filter !== "trash" && (
+                        <TableCell
+                          className="selection-column"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Checkbox
+                            aria-label={`Выбрать ${r.data.title}`}
+                            checked={selection.has(r.id)}
+                            onCheckedChange={(checked) =>
+                              setSelection((previous) => {
+                                const next = new Set(previous);
+                                if (checked === true) next.add(r.id);
+                                else next.delete(r.id);
+                                return next;
+                              })
+                            }
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="pl-6">
                         <div className="record-name">
                           <button
@@ -669,12 +814,70 @@ function VaultShell({
           openRecord(id);
         }}
       />
+      <Suspense
+        fallback={
+          <p role="status" className="muted">
+            Загрузка инструмента…
+          </p>
+        }
+      >
+        {importMounted && (
+          <RecordImport
+            store={store}
+            open={importOpen}
+            onClose={() => setImportOpen(false)}
+            onExitComplete={() => setImportMounted(false)}
+          />
+        )}
+        {bulkIds && (
+          <RecordBulk
+            key={bulkIds.join(":")}
+            store={store}
+            ids={bulkIds}
+            open={bulkOpen}
+            onClose={() => setBulkOpen(false)}
+            onDone={() => {
+              setBulkOpen(false);
+              setSelection(new Set());
+            }}
+            onExitComplete={() => setBulkIds(null)}
+          />
+        )}
+        {draftMounted && (
+          <Drafts
+            store={store}
+            open={draftOpen}
+            onClose={() => setDraftOpen(false)}
+            onExitComplete={() => setDraftMounted(false)}
+            onOpenRecord={(id) => {
+              setDraftOpen(false);
+              setPage("vault");
+              setFilter("all");
+              setFolder("");
+              setSearch("");
+              openRecord(id);
+            }}
+            onRestore={(body, id) => {
+              setDraftOpen(false);
+              setEditing({
+                key: crypto.randomUUID(),
+                recordId: body.recordId ?? undefined,
+                draftData: body,
+                draftId: id,
+              });
+              setEditorOpen(true);
+            }}
+          />
+        )}
+      </Suspense>
       {editing && (
         <RecordEditor
           key={editing.key}
           store={store}
           record={editRecord}
           initialData={editing.initialData}
+          draftData={editing.draftData}
+          draftId={editing.draftId}
           open={editorOpen}
           onClose={() => setEditorOpen(false)}
           onExitComplete={() =>

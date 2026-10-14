@@ -1573,3 +1573,146 @@ textarea {
   padding: 0;
   border: 0;
 }
+
+.vault-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.vault-tools-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.selection-column {
+  width: 44px;
+  padding-left: 24px;
+  padding-right: 0;
+}
+.selection-column [role="checkbox"] {
+  min-width: 18px;
+}
+.import-flow {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 16px;
+}
+.import-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 3px;
+  margin: -3px;
+}
+.import-flow > .dialog-actions {
+  flex-shrink: 0;
+}
+.import-mapping {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.import-mapping h3 {
+  grid-column: 1/-1;
+}
+.import-choice-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.import-row-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  max-width: 240px;
+}
+.import-scroll td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.draft-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.draft-row:last-child {
+  border-bottom: 0;
+}
+.draft-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.draft-row p {
+  margin: 4px 0 0;
+}
+.draft-row-actions {
+  display: flex;
+  gap: 8px;
+}
+.draft-status {
+  flex-shrink: 0;
+  font-size: 12px;
+  min-height: 18px;
+  color: var(--ink-2);
+}
+.draft-status[role="alert"] {
+  color: var(--destructive);
+}
+.qr-camera {
+  width: 100%;
+  max-height: 320px;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--field);
+}
+.qr-confirm {
+  overflow-wrap: anywhere;
+}
+.bulk-preview ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+@media (max-width: 760px) {
+  .vault-tools-group {
+    flex-wrap: wrap;
+  }
+  .vault-tools-group button {
+    min-height: 40px;
+  }
+  .selection-column {
+    padding-left: 16px;
+  }
+  .import-mapping {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .import-choice-actions button,
+  .draft-row-actions button {
+    min-height: 44px;
+  }
+}
+.records-table th.selection-column {
+  width: 44px;
+}
+@media (max-width: 760px) {
+  .records-table .selection-column [role="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+}
