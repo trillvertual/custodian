@@ -255,7 +255,7 @@ export function useVault() {
           setUnlockHint(
             error instanceof ApiError
               ? error.message
-              : "Ключ браузера недоступен. Введите пароль и запомните браузер заново.",
+              : "Не удалось открыть записи ключом браузера. Повторите Passkey; если не поможет, откройте паролем и запомните браузер заново.",
           );
           return false;
         }

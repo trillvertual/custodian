@@ -1,10 +1,16 @@
-import { useEffect, useRef, type AnimationEvent } from "react";
+import { useLayoutEffect, useRef, type AnimationEvent } from "react";
 
 /** Let Radix finish its exit before discarding the current record or form. */
 export function useDialogExit(open: boolean, onExitComplete?: () => void) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open || !onExitComplete) return;
+    // Clear the parent sentinel in the same commit when Radix has already
+    // removed content. A passive effect leaves one visible frame blocked.
+    if (!ref.current) {
+      onExitComplete();
+      return;
+    }
     const frame = requestAnimationFrame(() => {
       // Radix removes content immediately when animations are unavailable.
       if (!ref.current) onExitComplete();
