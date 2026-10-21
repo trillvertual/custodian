@@ -1,4 +1,6 @@
 import { Form } from "./ui/form";
+import { Checkbox } from "./ui/checkbox";
+import { TrustedBrowsers } from "./trusted-browsers";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ShieldCheck,
@@ -383,14 +385,15 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [reset, setReset] = useState(false),
-    [savedFingerprint, setSavedFingerprint] = useState("");
+    [savedFingerprint, setSavedFingerprint] = useState(""),
+    [remember, setRemember] = useState(false);
   const user = store.session!.user;
   async function unlock(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await store.unlock(password);
+      await store.unlock(password, remember);
       setPassword("");
     } catch (e) {
       setError((e as Error).message);
@@ -403,10 +406,7 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
     setError("");
     try {
       const result = await authenticatePasskey();
-      if (!(await store.passkeyUnlock(result.id, result.prf)))
-        setError(
-          "Этот Passkey не открыл записи. Используйте пароль или Passkey с поддержкой PRF.",
-        );
+      await store.passkeyUnlock(result.id, result.prf);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -544,6 +544,7 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
             </>
           ) : (
             <>
+              {store.unlockHint && <p role="status">{store.unlockHint}</p>}
               {store.session!.passwordEnabled && (
                 <Form
                   id="custodian-unlock"
@@ -571,13 +572,33 @@ export function UnlockScreen({ store }: { store: VaultStore }) {
                     autoFocus
                     required
                   />
+                  {store.session!.method === "passkey" &&
+                    store.session!.credentialId && (
+                      <div className="field">
+                        <label className="check-label">
+                          <Checkbox
+                            checked={remember}
+                            disabled={busy}
+                            onCheckedChange={(value) =>
+                              setRemember(value === true)
+                            }
+                          />
+                          Доверять этому браузеру
+                        </label>
+                        <small>
+                          После настройки для открытия записей хватит Passkey.
+                          Ключ останется в этом профиле браузера. На общем
+                          компьютере не включайте эту опцию.
+                        </small>
+                      </div>
+                    )}
                   <Submit busy={busy}>
                     Разблокировать
                     <ArrowRight size={16} />
                   </Submit>
                 </Form>
               )}
-              {Object.keys(user.passkeyWraps).length > 0 && (
+              {store.session!.credentials.length > 0 && (
                 <Button
                   variant="outline"
                   className="full-width unlock-passkey"
@@ -871,7 +892,7 @@ export function Enrollment({ store }: { store: VaultStore }) {
             <small>
               {credential.prf
                 ? "Вход и открытие записей"
-                : "Вход; записи открываются паролем"}
+                : "Вход; записи открываются доверенным браузером или паролем"}
             </small>
           </span>
           <div className="auth-method-actions">
@@ -903,10 +924,11 @@ export function Enrollment({ store }: { store: VaultStore }) {
       ))}
       {!decryptingKeys.length && (
         <p>
-          Чтобы отключить пароль, подключите Passkey с поддержкой открытия
-          записей.
+          Для входа без повторного пароля можно запомнить этот браузер. Чтобы
+          полностью отключить парольный вход, нужен Passkey с PRF.
         </p>
       )}
+      <TrustedBrowsers store={store} />
       <ErrorMessage error={error} />
     </div>
   );

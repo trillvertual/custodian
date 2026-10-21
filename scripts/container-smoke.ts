@@ -164,3 +164,184 @@ for (const record of await getRecords()) {
 console.log(
   "Container: actual PostgreSQL atomic batches, concurrent idempotent retries, rollback and history OK",
 );
+
+// The browser key stays in this isolated client process; PostgreSQL gets only its box.
+const { createHash, generateKeyPairSync, randomBytes, sign } =
+  await import("node:crypto");
+const { encryptBrowserIdentity, decryptBrowserIdentity } =
+  await import("../apps/web/src/lib/trusted-browser.ts");
+const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const jwk = pair.publicKey.export({ format: "jwk" });
+const credentialId = randomBytes(32).toString("base64url");
+const cose = Buffer.concat([
+  Buffer.from("a5010203262001215820", "hex"),
+  Buffer.from(jwk.x!, "base64url"),
+  Buffer.from("225820", "hex"),
+  Buffer.from(jwk.y!, "base64url"),
+]);
+// All interpolated values here are generated UUID/base64url/hex public data.
+execFileSync(
+  "docker",
+  [
+    "compose",
+    "-p",
+    project,
+    "exec",
+    "-T",
+    "db",
+    "psql",
+    "-U",
+    "vault",
+    "-d",
+    "vault",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up) VALUES('${credentialId}','${userId}',decode('${cose.toString("hex")}','hex'),0,'[]','singleDevice',false)`,
+  ],
+  { stdio: ["ignore", "pipe", "pipe"] },
+);
+const options = await (
+  await fetch(`${base}/api/auth/passkey/options`, {
+    method: "POST",
+    headers,
+    body: "{}",
+  })
+).json();
+const client = Buffer.from(
+  JSON.stringify({
+    type: "webauthn.get",
+    challenge: options.options.challenge,
+    origin,
+    crossOrigin: false,
+  }),
+);
+const authenticator = Buffer.alloc(37);
+createHash("sha256").update("vault.test").digest().copy(authenticator);
+authenticator[32] = 0x05;
+authenticator.writeUInt32BE(1, 33);
+const assertion = {
+  flow: options.flow,
+  response: {
+    id: credentialId,
+    rawId: credentialId,
+    type: "public-key",
+    clientExtensionResults: {},
+    response: {
+      clientDataJSON: client.toString("base64url"),
+      authenticatorData: authenticator.toString("base64url"),
+      userHandle: Buffer.from(userId).toString("base64url"),
+      signature: sign(
+        "sha256",
+        Buffer.concat([
+          authenticator,
+          createHash("sha256").update(client).digest(),
+        ]),
+        pair.privateKey,
+      ).toString("base64url"),
+    },
+  },
+};
+const authenticated = await fetch(`${base}/api/auth/passkey/verify`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify(assertion),
+});
+assert.equal(authenticated.status, 200);
+headers.Cookie = authenticated.headers.get("set-cookie")!.split(";")[0]!;
+headers["X-CSRF-Token"] = (await authenticated.json()).csrf;
+const deviceContext = {
+  id: crypto.randomUUID(),
+  userId,
+  vaultId,
+  credentialId,
+  identityPublicKey: identity.identity.publicKey,
+};
+const deviceKey = await crypto.subtle.generateKey(
+  { name: "AES-GCM", length: 256 },
+  false,
+  ["encrypt", "decrypt"],
+);
+const deviceBody = {
+  ...deviceContext,
+  label: "Synthetic CI browser",
+  box: await encryptBrowserIdentity(
+    deviceContext,
+    deviceKey,
+    identity.privateKey,
+  ),
+};
+for (let retry = 0; retry < 2; retry++) {
+  const response = await fetch(`${base}/api/auth/trusted-devices`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(deviceBody),
+  });
+  assert.equal(response.status, 200);
+}
+const devices = await (
+  await fetch(`${base}/api/auth/trusted-devices`, { headers })
+).json();
+assert.equal(devices.length, 1);
+assert.ok(!("box" in devices[0]));
+const deviceUrl = `${base}/api/auth/trusted-devices/${deviceContext.id}`;
+const unlocked = await fetch(`${deviceUrl}/unlock`, {
+  method: "POST",
+  headers,
+  body: "{}",
+});
+assert.equal(unlocked.status, 200);
+const openedIdentity = await decryptBrowserIdentity(
+  deviceContext,
+  deviceKey,
+  (await unlocked.json()).box,
+);
+assert.deepEqual(openedIdentity, identity.privateKey);
+openedIdentity.fill(0);
+assert.equal(
+  (await fetch(`${deviceUrl}/unlock`, { method: "POST", headers, body: "{}" }))
+    .status,
+  403,
+);
+execFileSync(
+  "docker",
+  [
+    "compose",
+    "-p",
+    project,
+    "exec",
+    "-T",
+    "db",
+    "psql",
+    "-U",
+    "vault",
+    "-d",
+    "vault",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    `UPDATE sessions SET authenticated_at=now()-interval '61 seconds' WHERE user_id='${userId}' AND method='passkey'`,
+  ],
+  { stdio: ["ignore", "pipe", "pipe"] },
+);
+assert.equal(
+  (await fetch(`${deviceUrl}/unlock`, { method: "POST", headers, body: "{}" }))
+    .status,
+  403,
+);
+assert.equal(
+  (
+    await fetch(deviceUrl, {
+      method: "DELETE",
+      headers: {
+        Cookie: headers.Cookie,
+        Origin: origin,
+        "X-CSRF-Token": headers["X-CSRF-Token"],
+      },
+    })
+  ).status,
+  200,
+);
+console.log(
+  "Container: non-PRF passkey binding, trusted browser encryption, idempotent setup, fresh proof and revocation OK",
+);

@@ -23,6 +23,7 @@ import {
   type VaultRecord,
 } from "../../../../packages/core/src/index.ts";
 import { api, setCsrf, ApiError } from "./api.ts";
+import { rememberBrowser, openTrustedBrowser } from "./trusted-browser";
 export type Session = {
   user: SessionUser;
   csrf: string;
@@ -30,6 +31,7 @@ export type Session = {
   passwordEnabled: boolean;
   identities: string[];
   credentials: { id: string; prf: boolean }[];
+  credentialId?: string | null;
 };
 export type AuthConfig = {
   initialized: boolean;
@@ -42,7 +44,8 @@ export function useVault() {
     [records, setRecords] = useState<DecryptedRecord[]>([]),
     [unlocked, setUnlocked] = useState(false),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [unlockHint, setUnlockHint] = useState("");
   const keys = useRef<{ privateKey: Uint8Array; vaultKey: Uint8Array } | null>(
     null,
   );
@@ -63,6 +66,7 @@ export function useVault() {
     keys.current = null;
     setRecords([]);
     setUnlocked(false);
+    setUnlockHint("");
   }, []);
   const refreshSession = useCallback(
     async (publish = true) => {
@@ -197,17 +201,33 @@ export function useVault() {
     if (generation !== authGeneration.current)
       throw new Error("Открытие хранилища отменено.");
   }
-  async function unlock(password: string) {
+  async function unlock(password: string, remember = false) {
     const generation = ++authGeneration.current;
     const current = await refreshSession();
     assertGeneration(generation);
     if (!current) throw new Error("Сессия истекла. Войдите заново.");
-    const privateKey = unlockPassword(
+    let privateKey: Uint8Array | null = unlockPassword(
       current.user.identity,
       password,
       current.user.id,
     );
-    await unlockWithPrivate(privateKey, current, generation);
+    try {
+      if (remember)
+        await rememberBrowser(current, {
+          assertActive: () => assertGeneration(generation),
+          getPrivateKey: () => {
+            assertGeneration(generation);
+            return privateKey!;
+          },
+        });
+      assertGeneration(generation);
+      const owned = privateKey;
+      privateKey = null;
+      await unlockWithPrivate(owned, current, generation);
+      setUnlockHint("");
+    } finally {
+      erase(privateKey);
+    }
   }
   async function passkeyUnlock(id: string, prf: Uint8Array | null) {
     const generation = ++authGeneration.current;
@@ -215,17 +235,49 @@ export function useVault() {
       const current = await refreshSession(false);
       assertGeneration(generation);
       if (!current) return false;
-      if (!prf || !current.user.passkeyWraps[id]) {
-        setSession(current);
-        return false;
+      let privateKey: Uint8Array | null = null;
+      if (prf && current.user.passkeyWraps[id]) {
+        privateKey = unlockPasskey(
+          current.user.passkeyWraps[id]!,
+          prf,
+          current.user.id,
+          id,
+        );
+      } else {
+        try {
+          privateKey = await openTrustedBrowser(current, id, () =>
+            assertGeneration(generation),
+          );
+        } catch (error) {
+          assertGeneration(generation);
+          if (error instanceof ApiError && error.status === 401) throw error;
+          setSession(current);
+          setUnlockHint(
+            error instanceof ApiError
+              ? error.message
+              : "Ключ браузера недоступен. Введите пароль и запомните браузер заново.",
+          );
+          return false;
+        }
       }
-      const privateKey = unlockPasskey(
-        current.user.passkeyWraps[id]!,
-        prf,
-        current.user.id,
-        id,
-      );
-      await unlockWithPrivate(privateKey, current, generation);
+      try {
+        assertGeneration(generation);
+        if (!privateKey) {
+          setUnlockHint(
+            current.passwordEnabled
+              ? "Passkey принят. Чтобы открывать записи без пароля в этом браузере, один раз введите пароль и включите доверие браузеру."
+              : "Passkey принят, но ключа для открытия записей в этом браузере нет. Используйте Passkey с PRF или восстановление доступа.",
+          );
+          setSession(current);
+          return false;
+        }
+        const owned = privateKey;
+        privateKey = null;
+        await unlockWithPrivate(owned, current, generation);
+      } finally {
+        erase(privateKey);
+      }
+      setUnlockHint("");
       setSession(current);
       return true;
     } finally {
@@ -412,6 +464,7 @@ export function useVault() {
     loading,
     error,
     setError,
+    unlockHint,
     setConfig,
     refreshSession,
     unlock,
