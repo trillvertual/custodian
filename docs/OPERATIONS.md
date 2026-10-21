@@ -7,11 +7,11 @@
 Скачайте файлы релиза через GitHub или `gh`:
 
 ```bash
-gh release download v0.4.0 --repo trillvertual/custodian --dir custodian-download
+gh release download v0.5.0 --repo trillvertual/custodian --dir custodian-download
 cd custodian-download
 sha256sum --check SHA256SUMS
-tar -xzf custodian-0.4.0-source.tar.gz
-cd custodian-0.4.0
+tar -xzf custodian-0.5.0-source.tar.gz
+cd custodian-0.5.0
 npm ci
 npm run configure -- --url https://vault.example.com
 ```
@@ -92,6 +92,6 @@ CI проверяет код и image на каждый PR/push, release workflo
 
 SHA-256 выявляет повреждение assets, но не заменяет доверие к владельцу репозитория и pipeline. Образ содержит OCI source/revision/version, SBOM и BuildKit provenance. Release archive с исходниками строится через `git archive` commit тега; runtime и image строятся из того же checkout. Документировано происхождение сторонних исходников, авторский код Custodian доступен под MIT.
 
-## Доверенные браузеры (Unreleased)
+## Доверенные браузеры (v0.5.0)
 
 Миграция 4 добавляет привязку Passkey к сессии, одноразовое право раскрытия оболочки и таблицу `trusted_devices`. Локальные ключи браузеров в резервную копию сервера не входят. После очистки профиля потребуется пароль и повторная настройка доверия; парольный вход автоматически не отключается. Отозвать конкретную запись доверенного браузера можно в настройках аккаунта. При откате на 0.4.0 новые таблицы сохраняются, но старый клиент не использует этот способ разблокировки.

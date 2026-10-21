@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/trillvertual/custodian/actions/workflows/ci.yml/badge.svg)](https://github.com/trillvertual/custodian/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-365C72)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.4.0-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.4.0)
+[![Release](https://img.shields.io/badge/release-v0.5.0-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.5.0)
 
 Self-hosted менеджер общих доступов для команды VPN-сервиса. Одна установка, один владелец и приглашённые администраторы. Все активные участники видят и редактируют все записи.
 
@@ -77,7 +77,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
 
 ## Запуск на VPS
 
-Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.4.0](https://github.com/trillvertual/custodian/releases/tag/v0.4.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Bitwarden и менеджеры паролей](docs/PASSWORD-MANAGERS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
+Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.5.0](https://github.com/trillvertual/custodian/releases/tag/v0.5.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Bitwarden и менеджеры паролей](docs/PASSWORD-MANAGERS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
 
 Нужны Node.js >=22.12 для настройки, Docker Compose и HTTPS reverse proxy.
 
@@ -118,7 +118,7 @@ vault.example.com {
 
 У каждого участника свой X25519 ключ. Общий случайный ключ хранилища передаётся в sealed box публичному ключу участника. Приватный ключ участника защищён паролем через Argon2id: 64 MiB, 3 прохода, случайная соль. Пароль и расшифрованный приватный ключ не отправляются серверу.
 
-Совместимый Passkey с WebAuthn PRF может разблокировать приватный ключ без ввода пароля. PRF-результат никогда не отправляется серверу. Для Passkey без PRF в `Unreleased` добавлен режим доверенного браузера: после однократной настройки паролем локальный WebCrypto-ключ открывает серверную зашифрованную оболочку только после свежего подтверждения Passkey. В другом профиле или после очистки данных потребуется настройка заново. [Настройка и ограничения](docs/PASSWORD-MANAGERS.md#passkey-из-bitwarden-без-повторного-пароля), [описание PRF](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API/WebAuthn_extensions#prf).
+Совместимый Passkey с WebAuthn PRF может разблокировать приватный ключ без ввода пароля. PRF-результат никогда не отправляется серверу. Для Passkey без PRF в v0.5.0 добавлен режим доверенного браузера: после однократной настройки паролем локальный WebCrypto-ключ открывает серверную зашифрованную оболочку только после свежего подтверждения Passkey. В другом профиле или после очистки данных потребуется настройка заново. [Настройка и ограничения](docs/PASSWORD-MANAGERS.md#passkey-из-bitwarden-без-повторного-пароля), [описание PRF](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API/WebAuthn_extensions#prf).
 
 Для входа браузер вычисляет отдельный 32-байтовый verifier через Argon2id (64 MiB, 3 прохода) со стабильной публичной солью, привязанной к домену установки и нормализованному логину. Сервер хранит его scrypt-хеш. Verifier не открывает личный ключ: его обёртка использует другую, случайную соль. При изменении пароля verifier и обёртка обновляются в одной транзакции с проверкой исходной версии; остальные сессии пользователя отзываются. Изменение домена или логина требует пересоздания verifier; для владельца используйте rescue CLI. Старые парольные хеши не принимаются новым API до явной миграции. Сохранённое JSON-поле identity.master оставлено только для совместимости шифрованного формата. Сессии: случайные opaque токены, в базе только SHA-256 хеш, HttpOnly/Secure/SameSite cookie, проверка Origin и CSRF. Для управления входом, приглашений, восстановления, выгрузок и отключения участников требуется вход не старше 15 минут.
 
@@ -198,7 +198,7 @@ npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-Установка системных библиотек требует прав администратора; если они уже есть, достаточно `npx playwright install chromium --only-shell`. [Документация Playwright](https://playwright.dev/docs/browsers). Тесты поднимают отдельные API для desktop/mobile на `127.0.0.1:3010` и `127.0.0.1:3011`, завершают их после проверки и сохраняют снимки в `.impeccable/review/`. Проверяются темы, навигация клавиатурой, формы, шифрование, история, корзина, копирование, ручная блокировка, reduced motion и доступность через axe-core. [Результаты проверок](docs/VALIDATION.md), [аудит интерфейса](docs/UI-AUDIT.md).
+Установка системных библиотек требует прав администратора; если они уже есть, достаточно `npx playwright install chromium --only-shell`. [Документация Playwright](https://playwright.dev/docs/browsers). Тесты поднимают шесть изолированных API на портах `3010–3015`: основной и data-tools suite используют `127.0.0.1`, WebAuthn suite – `localhost`. Завершают их после проверки и сохраняют снимки в `.impeccable/review/`. Проверяются темы, навигация клавиатурой, формы, шифрование, история, корзина, копирование, ручная блокировка, reduced motion и доступность через axe-core. [Результаты проверок](docs/VALIDATION.md), [аудит интерфейса](docs/UI-AUDIT.md).
 
 Для разработки с обычным PostgreSQL создайте `.env` с `NODE_ENV=development`, `APP_URL=http://localhost:5173`, `DATABASE_URL` с адресом вашей базы и случайным `SETUP_TOKEN`, затем `npm run dev`.
 
