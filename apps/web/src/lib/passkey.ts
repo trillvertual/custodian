@@ -140,6 +140,8 @@ export async function authenticatePasskey(
     const response = await startAuthentication({ optionsJSON: options });
     prf = prfBytes(response);
     assertActive();
+    if (credentialId && response.id !== credentialId)
+      throw new Error("Подтвердите выбранный Passkey.");
     const session = await api<{ csrf: string }>(
       "/auth/passkey/verify",
       "POST",

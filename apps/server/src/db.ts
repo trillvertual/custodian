@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS audit(id bigserial PRIMARY KEY, user_id uuid REFERENC
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_login_version smallint NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS record_batches(id uuid PRIMARY KEY, actor_id uuid NOT NULL REFERENCES users(id), epoch integer NOT NULL, payload_hash text NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS record_batches_created_at ON record_batches(created_at);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS credential_id text REFERENCES credentials(id) ON DELETE SET NULL;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS trusted_unlock_used boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS trusted_devices(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, credential_id text NOT NULL REFERENCES credentials(id) ON DELETE CASCADE, vault_id uuid NOT NULL REFERENCES vaults(id) ON DELETE CASCADE, identity_public_key text NOT NULL, label text NOT NULL CHECK(length(label) BETWEEN 1 AND 80), box jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), last_used_at timestamptz);
+CREATE INDEX IF NOT EXISTS trusted_devices_user_id ON trusted_devices(user_id);
+INSERT INTO schema_migrations(version) VALUES(4) ON CONFLICT DO NOTHING;
 INSERT INTO schema_migrations(version) VALUES(3) ON CONFLICT DO NOTHING;
 INSERT INTO schema_migrations(version) VALUES(2) ON CONFLICT DO NOTHING;
 INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;

@@ -34,6 +34,7 @@ import {
   verifyPassword,
 } from "./security.ts";
 import { registerRecordBatch } from "./records-batch.ts";
+import { registerTrustedDevices } from "./trusted-devices.ts";
 import { registerOAuth } from "./oauth.ts";
 export class HttpError extends Error {
   constructor(
@@ -61,6 +62,7 @@ export type Auth = {
   csrf: string;
   method: string;
   authenticatedAt: Date;
+  credentialId: string | null;
 };
 declare module "fastify" {
   interface FastifyRequest {
@@ -100,12 +102,13 @@ export async function makeSession(
   reply: FastifyReply,
   userId: string,
   method: string,
+  credentialId: string | null = null,
 ) {
   const raw = token(),
     csrf = token();
   await db.query(
-    "INSERT INTO sessions(token_hash,user_id,csrf,method,expires_at) VALUES($1,$2,$3,$4,now()+interval '12 hours')",
-    [hash(raw), userId, csrf, method],
+    "INSERT INTO sessions(token_hash,user_id,csrf,method,credential_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '12 hours')",
+    [hash(raw), userId, csrf, method, credentialId],
   );
   reply.setCookie(
     config.secure ? "__Host-vault-session" : "vault-session",
@@ -245,7 +248,7 @@ export async function buildApp(
       req.cookies[config.secure ? "__Host-vault-session" : "vault-session"];
     if (raw) {
       const { rows } = await db.query(
-        "SELECT u.*,s.csrf,s.method,s.authenticated_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.status<>'suspended'",
+        "SELECT u.*,s.csrf,s.method,s.authenticated_at,s.credential_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.status<>'suspended'",
         [hash(raw)],
       );
       if (rows[0])
@@ -255,6 +258,7 @@ export async function buildApp(
           method: rows[0].method,
           authenticatedAt: rows[0].authenticated_at,
           sessionHash: hash(raw),
+          credentialId: rows[0].credential_id,
         };
     }
     if (
@@ -400,6 +404,7 @@ export async function buildApp(
       user,
       csrf: a.csrf,
       method: a.method,
+      credentialId: a.credentialId,
       passwordEnabled:
         !!a.user.password_hash && a.user.password_login_version === 1,
       identities: (
@@ -619,7 +624,7 @@ export async function buildApp(
       if (!updated.rowCount)
         throw new HttpError(401, "Passkey изменился. Повторите вход.");
       await audit(db, row.user_id, "auth.login", null, { method: "passkey" });
-      return makeSession(db, reply, row.user_id, "passkey");
+      return makeSession(db, reply, row.user_id, "passkey", row.id);
     },
   );
   app.post("/api/auth/passkey/wrap", async (req) => {
@@ -796,6 +801,9 @@ export async function buildApp(
       await c.query("UPDATE credentials SET prf_wrap=NULL WHERE user_id=$1", [
         a.user.id,
       ]);
+      await c.query("DELETE FROM trusted_devices WHERE user_id=$1", [
+        a.user.id,
+      ]);
       await c.query(
         "DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2",
         [a.user.id, a.sessionHash],
@@ -805,6 +813,7 @@ export async function buildApp(
     return { ok: true };
   });
   registerRecordBatch(app, db);
+  registerTrustedDevices(app, db);
   app.get("/api/records", async (req) => {
     active(req);
     return (

@@ -1,5 +1,12 @@
 import { Checkbox } from "./components/ui/checkbox";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  lazy,
+  Suspense,
+} from "react";
 import {
   IconDatabase,
   IconStar,
@@ -239,7 +246,7 @@ function VaultShell({
     setEditing({ key: crypto.randomUUID(), initialData });
     setEditorOpen(true);
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();

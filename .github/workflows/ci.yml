@@ -73,7 +73,7 @@ jobs:
       - run: npm run test:container
       - name: Check migrations and rescue executable
         run: |
-          test "$(docker compose -p custodian-ci exec -T db psql -U vault -d vault -Atc 'SELECT max(version) FROM schema_migrations')" = 3
+          test "$(docker compose -p custodian-ci exec -T db psql -U vault -d vault -Atc 'SELECT max(version) FROM schema_migrations')" = 4
           docker compose -p custodian-ci exec -T app node packages/rescue/dist/index.js --help
       - name: Container diagnostics
         if: failure()

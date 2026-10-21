@@ -781,6 +781,19 @@ code,
   display: flex;
   gap: 8px;
 }
+.trusted-browser-row {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.trusted-browser-row > div {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.trusted-browser-row p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
 .selectable-value {
   flex: 1;
   overflow-x: auto;
