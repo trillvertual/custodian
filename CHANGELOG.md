@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-31
+
 - Объединены накопленные обновления Dependabot: Fastify и плагины, Radix, Lucide, Prettier, GitHub Actions и транзитивные пакеты. Дополнительно обновлён Zod и ограниченно заменён уязвимый glob у static-плагина; причины и условия удаления override описаны в CONTRIBUTING.
 - CodeQL init/analyze обновлены вместе; Dependabot теперь группирует их, чтобы разница версий не ломала анализ.
 
@@ -47,7 +49,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.0...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.1...main
+[0.5.1]: https://github.com/trillvertual/custodian/releases/tag/v0.5.1
 [0.5.0]: https://github.com/trillvertual/custodian/releases/tag/v0.5.0
 [0.4.0]: https://github.com/trillvertual/custodian/releases/tag/v0.4.0
 [0.3.0]: https://github.com/trillvertual/custodian/releases/tag/v0.3.0
