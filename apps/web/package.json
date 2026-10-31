@@ -21,7 +21,7 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@tabler/icons-react": "^3.49.0",
     "@vault/core": "*",
-    "@zxing/browser": "^0.1.5",
+    "@zxing/browser": "^0.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
