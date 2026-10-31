@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/trillvertual/custodian/actions/workflows/ci.yml/badge.svg)](https://github.com/trillvertual/custodian/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-365C72)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.5.0-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.5.0)
+[![Release](https://img.shields.io/badge/release-v0.5.1-790D16)](https://github.com/trillvertual/custodian/releases/tag/v0.5.1)
 
 Self-hosted менеджер общих доступов для команды VPN-сервиса. Одна установка, один владелец и приглашённые администраторы. Все активные участники видят и редактируют все записи.
 
@@ -77,7 +77,7 @@ TypeScript, React, компоненты на Radix, Fastify, PostgreSQL и Docke
 
 ## Запуск на VPS
 
-Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.5.0](https://github.com/trillvertual/custodian/releases/tag/v0.5.0). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Bitwarden и менеджеры паролей](docs/PASSWORD-MANAGERS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
+Готовый релиз с архивами, SHA-256 и Docker-образом: [v0.5.1](https://github.com/trillvertual/custodian/releases/tag/v0.5.1). [Установка, backup, обновление и откат](docs/OPERATIONS.md). [Bitwarden и менеджеры паролей](docs/PASSWORD-MANAGERS.md). [Changelog](CHANGELOG.md), [правила разработки](CONTRIBUTING.md), [сообщения об уязвимостях](SECURITY.md), [сторонние исходники и права](THIRD_PARTY_NOTICES.md).
 
 Нужны Node.js >=22.12 для настройки, Docker Compose и HTTPS reverse proxy.
 
