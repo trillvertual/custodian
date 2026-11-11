@@ -1,0 +1,45 @@
+name: Scan Custodian container
+description: Report all image vulnerabilities and reject fixable high or critical findings.
+inputs:
+  image-ref:
+    description: Exact local image ID or published registry digest.
+    required: true
+outputs:
+  sarif-file:
+    description: SARIF report including unfixed and lower-severity findings.
+    value: ${{ steps.report.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - name: Report image vulnerabilities
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        version: v0.76.2
+        image-ref: ${{ inputs.image-ref }}
+        scanners: vuln
+        format: sarif
+        output: ${{ runner.temp }}/custodian-trivy.sarif
+        exit-code: "0"
+        ignore-unfixed: false
+        timeout: 10m
+        cache-dir: ${{ runner.temp }}/trivy-cache
+    - id: report
+      shell: bash
+      env:
+        REPORT_PATH: ${{ runner.temp }}/custodian-trivy.sarif
+      run: |
+        test -s "$REPORT_PATH"
+        echo "path=$REPORT_PATH" >> "$GITHUB_OUTPUT"
+    - name: Reject fixable high and critical vulnerabilities
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        version: v0.76.2
+        skip-setup-trivy: true
+        image-ref: ${{ inputs.image-ref }}
+        scanners: vuln
+        format: table
+        exit-code: "1"
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        timeout: 10m
+        cache-dir: ${{ runner.temp }}/trivy-cache

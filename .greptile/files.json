@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "docs/SECURITY.md",
+      "description": "Cryptographic model, trusted browsers and recovery boundaries"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Validation, release and dependency override policy"
+    },
+    {
+      "path": "docs/DATA-TOOLS.md",
+      "description": "Import, TOTP QR, batch writes and encrypted draft limitations"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node", "vite/client"] },
+  "include": [
+    "apps/*/src",
+    "packages/*/src",
+    "tests",
+    "scripts",
+    "*.ts",
+    "apps/*/vite.config.ts"
+  ]
+}

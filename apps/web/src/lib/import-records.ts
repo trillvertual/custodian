@@ -471,7 +471,10 @@ export function parseImport(text: string, delimiter = ""): ImportSource {
     try {
       return bitwarden(JSON.parse(input));
     } catch (error) {
-      if (error instanceof SyntaxError) throw new Error("Повреждён JSON-файл.");
+      if (error instanceof SyntaxError) {
+        // eslint-disable-next-line preserve-caught-error -- Parser causes may retain imported secrets.
+        throw new Error("Повреждён JSON-файл.");
+      }
       throw error;
     }
   }

@@ -12,10 +12,18 @@ const cleanup = setInterval(() => {
 }, 600_000);
 cleanup.unref();
 for (const signal of ["SIGTERM", "SIGINT"])
-  process.once(signal, async () => {
-    clearInterval(cleanup);
-    await app.close();
-    await db.end();
-    process.exit(0);
+  process.once(signal, () => {
+    void (async () => {
+      clearInterval(cleanup);
+      try {
+        await app.close();
+      } finally {
+        await db.end();
+      }
+      process.exit(0);
+    })().catch(() => {
+      app.log.error("Graceful shutdown failed.");
+      process.exit(1);
+    });
   });
 await app.listen({ host: config.HOST, port: config.PORT });

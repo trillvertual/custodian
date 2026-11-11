@@ -41,9 +41,13 @@ function readJournal(scope: string): DraftEnvelope[] {
           key === journalPrefix + parsed.data.key
         )
           rows.push(parsed.data);
-      } catch {}
+      } catch {
+        // Malformed local entries must not prevent recovery of other drafts.
+      }
     }
-  } catch {}
+  } catch {
+    // Storage access can be denied by the browser.
+  }
   return rows;
 }
 let database: Promise<IDBDatabase> | null = null;
@@ -188,7 +192,9 @@ export async function removeDraft(scope: string, id: string): Promise<void> {
     tx.oncomplete = () => {
       try {
         localStorage.removeItem(journalPrefix + `${scope}:${id}`);
-      } catch {}
+      } catch {
+        // IndexedDB deletion succeeded; journal cleanup is best effort.
+      }
       resolve();
     };
     tx.onabort = tx.onerror = () =>

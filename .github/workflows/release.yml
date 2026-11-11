@@ -13,6 +13,9 @@ concurrency:
 
 jobs:
   validate:
+    permissions:
+      contents: read
+      security-events: write
     uses: ./.github/workflows/ci.yml
   publish:
     name: Publish public image and release
@@ -22,6 +25,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      security-events: write
     env:
       RELEASE_TAG: ${{ github.ref_name }}
       RELEASE_IMAGE: ghcr.io/trillvertual/custodian-app
@@ -107,6 +111,17 @@ jobs:
           digest="${EXISTING_DIGEST:-$BUILD_DIGEST}"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Scan the exact published image
+        id: release-image-scan
+        uses: ./.github/actions/scan-image
+        with:
+          image-ref: ${{ env.RELEASE_IMAGE }}@${{ steps.published-image.outputs.digest }}
+      - name: Publish release image findings
+        if: always() && steps.release-image-scan.outputs.sarif-file != ''
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: ${{ steps.release-image-scan.outputs.sarif-file }}
+          category: container-release
       - name: Require public package visibility
         timeout-minutes: 5
         env:

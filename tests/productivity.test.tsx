@@ -181,7 +181,11 @@ it.each(["closed", "locked", "replaced keys", "changed query"])(
   "cancels delayed secret copy when %s",
   async (state) => {
     let resolve!: () => void;
-    mocks.api.mockReturnValue(new Promise<void>((done) => (resolve = done)));
+    mocks.api.mockReturnValue(
+      new Promise<void>((done) => {
+        resolve = done;
+      }),
+    );
     const { store, props } = fixture();
     const ui = render(<SearchPalette {...props} />);
     const button = await screen.findByRole("button", {
@@ -209,7 +213,11 @@ it.each(["closed", "locked", "replaced keys", "changed query"])(
 );
 it("copies TOTP at completion of the audit and keeps secrets out of the DOM", async () => {
   let resolve!: () => void;
-  mocks.api.mockReturnValue(new Promise<void>((done) => (resolve = done)));
+  mocks.api.mockReturnValue(
+    new Promise<void>((done) => {
+      resolve = done;
+    }),
+  );
   const { record, props } = fixture();
   render(<SearchPalette {...props} />);
   fireEvent.click(

@@ -161,5 +161,8 @@ async function stop() {
   await db.end();
   process.exit(0);
 }
-process.once("SIGINT", stop);
-process.once("SIGTERM", stop);
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    void stop().catch(() => process.exit(1));
+  });
+}

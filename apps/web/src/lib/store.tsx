@@ -96,7 +96,7 @@ export function useVault() {
   );
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    void (async () => {
       try {
         await ready;
         const value = await api<AuthConfig>("/auth/config");
@@ -448,11 +448,14 @@ export function useVault() {
   // Poll for membership/key changes; pending users can get approved without signing in again.
   useEffect(() => {
     if (!session) return;
-    const timer = setInterval(async () => {
-      try {
-        const current = await refreshSession();
-        if (current && current.user.epoch !== session.user.epoch) lock();
-      } catch {}
+    const timer = setInterval(() => {
+      void refreshSession()
+        .then((current) => {
+          if (current && current.user.epoch !== session.user.epoch) lock();
+        })
+        .catch(() => {
+          // A transient refresh failure leaves the current session unchanged.
+        });
     }, 30000);
     return () => clearInterval(timer);
   }, [session?.user.id, session?.user.epoch, refreshSession, lock]);

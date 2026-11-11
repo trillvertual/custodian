@@ -198,7 +198,7 @@ npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-Установка системных библиотек требует прав администратора; если они уже есть, достаточно `npx playwright install chromium --only-shell`. [Документация Playwright](https://playwright.dev/docs/browsers). Тесты поднимают шесть изолированных API на портах `3010–3015`: основной и data-tools suite используют `127.0.0.1`, WebAuthn suite – `localhost`. Завершают их после проверки и сохраняют снимки в `.impeccable/review/`. Проверяются темы, навигация клавиатурой, формы, шифрование, история, корзина, копирование, ручная блокировка, reduced motion и доступность через axe-core. [Результаты проверок](docs/VALIDATION.md), [аудит интерфейса](docs/UI-AUDIT.md).
+Установка системных библиотек требует прав администратора; если они уже есть, достаточно `npx playwright install chromium --only-shell`. [Документация Playwright](https://playwright.dev/docs/browsers). Тесты поднимают шесть изолированных API на портах `3010–3015`: основной и data-tools suite используют `127.0.0.1`, WebAuthn suite – `localhost`. Завершают их после проверки и сохраняют снимки в `.impeccable/review/`. Проверяются темы, навигация клавиатурой, формы, шифрование, история, корзина, копирование, ручная блокировка, reduced motion и доступность через axe-core. [Результаты проверок](docs/VALIDATION.md), [аудит интерфейса](docs/UI-AUDIT.md). [Автоматическое ревью и проверки](docs/AUTOMATED-REVIEW.md).
 
 Для разработки с обычным PostgreSQL создайте `.env` с `NODE_ENV=development`, `APP_URL=http://localhost:5173`, `DATABASE_URL` с адресом вашей базы и случайным `SETUP_TOKEN`, затем `npm run dev`.
 

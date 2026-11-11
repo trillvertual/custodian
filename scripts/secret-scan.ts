@@ -67,7 +67,7 @@ function forbiddenPath(path: string): boolean {
           (part === ".env" || part.startsWith(".env.")) &&
           part !== ".env.example",
       ) ||
-    /(^|\/)(?:id_rsa|id_ed25519|credentials\.json|service[-_]account\.json|[^/]+\.(?:pem|p12|pfx|key))$/i.test(
+    /(^|\/)(?:id_rsa|id_ed25519|snyk\.json|credentials\.json|service[-_]account\.json|[^/]+\.(?:pem|p12|pfx|key))$/i.test(
       normalized,
     )
   );

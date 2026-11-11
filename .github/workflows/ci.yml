@@ -24,11 +24,18 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/lint/package-lock.json
       - run: npm ci
       - run: npm run secrets:check
       - run: npm run release:check
       - run: npm run format:check
       - run: npm run typecheck
+      - run: npm ci --prefix tools/lint --ignore-scripts
+      - run: npm audit --prefix tools/lint --audit-level=high
+      - run: npm run lint
+      - run: npm run lint:verify
       - run: npm test
       - run: npm audit --audit-level=high
       - run: npm run build
@@ -56,6 +63,9 @@ jobs:
           retention-days: 7
   container:
     name: Docker and PostgreSQL 18
+    permissions:
+      contents: read
+      security-events: write
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -75,6 +85,20 @@ jobs:
         run: |
           test "$(docker compose -p custodian-ci exec -T db psql -U vault -d vault -Atc 'SELECT max(version) FROM schema_migrations')" = 4
           docker compose -p custodian-ci exec -T app node packages/rescue/dist/index.js --help
+      - name: Resolve built image
+        id: built-image
+        run: echo "ref=$(docker compose -p custodian-ci images --quiet app)" >> "$GITHUB_OUTPUT"
+      - name: Scan built image
+        id: image-scan
+        uses: ./.github/actions/scan-image
+        with:
+          image-ref: ${{ steps.built-image.outputs.ref }}
+      - name: Publish built image findings
+        if: always() && steps.image-scan.outputs.sarif-file != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: ${{ steps.image-scan.outputs.sarif-file }}
+          category: container-built
       - name: Container diagnostics
         if: failure()
         run: docker compose -p custodian-ci logs --no-color --tail 100

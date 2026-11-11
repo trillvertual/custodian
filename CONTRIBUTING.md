@@ -11,6 +11,9 @@ npm run release:check
 npm run format:check
 npm run secrets:check
 npm run typecheck
+npm run lint:install
+npm run lint
+npm run lint:verify
 npm test
 npm run build
 npx playwright install --with-deps chromium
@@ -32,6 +35,10 @@ Dependabot создаёт PR раз в неделю. Шаги `github/codeql-act
 В root `package.json` временно задан scoped override `@fastify/static → glob ^14.0.2`. Поддерживаемая ветка `@fastify/static` пока требует `glob ^13`, а [исправление отмены обхода файлов](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) опубликовано начиная с 14.0.2. Новая ветка также использует исправленный [minimatch](https://github.com/advisories/GHSA-g3hv-75wg-m249). Не применяйте предложенный `npm audit fix --force` откат static до 6.x – он несовместим с Fastify 5.
 
 Override касается только этой зависимости; Node 22 и CommonJS API поддерживаются. При обновлении проверяйте выдачу вложенных файлов, предварительно сжатых ресурсов и обход каталога с `wildcard: false`. Удалите override, когда `@fastify/static` сам перейдёт на исправленную совместимую ветку; повторите `npm ci`, `npm audit` и проверки контейнера.
+
+## Автоматическое ревью
+
+[Подключение и политика пяти инструментов](docs/AUTOMATED-REVIEW.md): ESLint, Trivy, Snyk, Greptile и What The Diff. Линтер использует отдельный dev-toolchain, чтобы сохранить TypeScript приложения; его lockfile также проверяется. Исправимые HIGH/CRITICAL в контейнере блокируют CI и выпуск. Внешние Apps требуют отдельной активации владельцем; конфигурация не означает, что сервис уже подключён.
 
 ## Выпуск
 
