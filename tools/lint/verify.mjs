@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
 import ts from "typescript";
+import semver from "semver";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 
@@ -52,7 +53,11 @@ try {
   );
   const appTs = join(root, "node_modules", "typescript", "package.json");
   assert.notEqual(await realpath(localTs), await realpath(appTs));
-  assert.equal(ts.version, "6.0.3");
+  const parser = require("typescript-eslint/package.json");
+  assert.ok(
+    semver.satisfies(ts.version, parser.peerDependencies.typescript),
+    "The isolated compiler must be supported by typescript-eslint",
+  );
   const app = JSON.parse(await readFile(appTs, "utf8"));
   assert.match(app.version, /^7\./);
   const unsafe = join(directory, "unsafe.tsx"),
