@@ -5,9 +5,9 @@ async function audit(page: Page, surface: string) {
   // Measure settled colors and layout, excluding continuous indicators.
   await page.evaluate(async () => {
     await document.fonts.ready;
-    await new Promise<void>((done) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => done())),
-    );
+    await new Promise<void>((done) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => done()));
+    });
     await Promise.all(
       document
         .getAnimations()
@@ -124,7 +124,10 @@ test("vault flows meet automated WCAG checks in both themes and motion settings"
       }),
     ).toHaveCount(0);
     await page.evaluate(
-      () => new Promise<void>((done) => requestAnimationFrame(() => done())),
+      () =>
+        new Promise<void>((done) => {
+          requestAnimationFrame(() => done());
+        }),
     );
     await page.keyboard.press("Control+k");
     await expect(

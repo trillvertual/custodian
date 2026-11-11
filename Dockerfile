@@ -12,6 +12,14 @@ COPY packages ./packages
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
+# Patch the base OS; retries=0 avoids the old APT redirect/retry vulnerability
+# while upgrading APT itself. Runtime uses node directly, not package managers.
+RUN apt-get -o Acquire::Retries=0 update \
+    && apt-get -o Acquire::Retries=0 upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+      /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ARG VERSION=development
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Custodian" \

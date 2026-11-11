@@ -132,7 +132,7 @@ test("record updates preserve the dialog and closing preserves shell geometry an
     )!;
     button.click();
     return new Promise<{ state: string | undefined; animations: string[] }>(
-      (done) =>
+      (done) => {
         requestAnimationFrame(() => {
           const dialog = document.querySelector<HTMLElement>(".detail-pane");
           done({
@@ -144,7 +144,8 @@ test("record updates preserve the dialog and closing preserves shell geometry an
                   (animation) => (animation as CSSAnimation).animationName,
                 ) ?? [],
           });
-        }),
+        });
+      },
     );
   });
   expect(exit.state).toBe("closed");

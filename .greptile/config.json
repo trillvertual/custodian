@@ -1,0 +1,18 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "effort": "base",
+  "autoReview": ["open", "push"],
+  "statusCheck": true,
+  "shouldUpdateDescription": false,
+  "autoApprove": {
+    "enabled": false
+  },
+  "summarySection": {
+    "included": false
+  },
+  "sequenceDiagramSection": {
+    "included": false
+  },
+  "ignorePatterns": "**/node_modules/**\n**/dist/**\npackage-lock.json\ntools/lint/package-lock.json\ndocs/screenshots/**\n**/*.png\n**/*.woff\n**/*.woff2"
+}

@@ -26,7 +26,10 @@
     "release:check": "tsx scripts/release-check.ts",
     "release:package": "tsx scripts/package-release.ts",
     "test:container": "tsx scripts/container-smoke.ts",
-    "secrets:check": "tsx scripts/secret-scan.ts"
+    "secrets:check": "tsx scripts/secret-scan.ts",
+    "lint": "node tools/lint/run.mjs",
+    "lint:install": "npm ci --prefix tools/lint",
+    "lint:verify": "node tools/lint/verify.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

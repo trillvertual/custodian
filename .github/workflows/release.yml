@@ -13,6 +13,9 @@ concurrency:
 
 jobs:
   validate:
+    permissions:
+      contents: read
+      security-events: write
     uses: ./.github/workflows/ci.yml
   publish:
     name: Publish public image and release
@@ -107,6 +110,10 @@ jobs:
           digest="${EXISTING_DIGEST:-$BUILD_DIGEST}"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Scan the exact published image
+        uses: ./.github/actions/scan-image
+        with:
+          image-ref: ${{ env.RELEASE_IMAGE }}@${{ steps.published-image.outputs.digest }}
       - name: Require public package visibility
         timeout-minutes: 5
         env:

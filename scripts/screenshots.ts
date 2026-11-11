@@ -22,9 +22,9 @@ let browser: Browser | undefined;
 async function capture(page: Page, name: string) {
   await page.evaluate(async () => {
     await document.fonts.ready;
-    await new Promise<void>((done) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => done())),
-    );
+    await new Promise<void>((done) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => done()));
+    });
   });
   await expect(page.locator(".brand:visible")).toHaveText("Custodian");
   await expect(page.locator("body")).not.toContainText(

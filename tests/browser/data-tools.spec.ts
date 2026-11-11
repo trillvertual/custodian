@@ -256,9 +256,9 @@ test("dialog actions and long labels stay inside their clipping containers at ev
       await page.setViewportSize(viewport);
       await page.evaluate(
         () =>
-          new Promise<void>((done) =>
-            requestAnimationFrame(() => requestAnimationFrame(() => done())),
-          ),
+          new Promise<void>((done) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => done()));
+          }),
       );
       const clipped = await dialog.evaluate((element) => {
         const failures: string[] = [];
