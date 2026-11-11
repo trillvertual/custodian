@@ -36,7 +36,7 @@ jobs:
       - run: npm ci --prefix tools/lint --ignore-scripts
       - uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce # 2026-10-07
         with:
-          snyk-version: 1.1308.4
+          snyk-version: v1.1308.4
       - name: Check application and lint dependencies
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
