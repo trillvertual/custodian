@@ -11,3 +11,4 @@ test-results/
 playwright-report/
 tests/lint-fixture-*/
 snyk.json
+/snyk/
