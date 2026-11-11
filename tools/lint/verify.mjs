@@ -4,6 +4,45 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
 import ts from "typescript";
+import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
+
+// AJV 6 uses only parse/serialize/resolve from uri-js. Exercise its actual
+// resolver through relative schema references after replacing the vulnerable
+// parser with fast-uri; do not merely check the dependency's declared version.
+const require = createRequire(import.meta.url);
+const Ajv = require("ajv");
+const ajvRequire = createRequire(require.resolve("ajv/package.json"));
+assert.equal(ajvRequire("uri-js/package.json").name, "fast-uri");
+const ajv = new Ajv({ schemaId: "auto" });
+ajv.addSchema({
+  $id: "https://example.test/schema/value.json",
+  type: "string",
+  pattern: "^[a-z]+$",
+});
+const validate = ajv.compile({
+  $id: "https://example.test/schema/root.json",
+  type: "object",
+  properties: { value: { $ref: "value.json" } },
+  required: ["value"],
+  additionalProperties: false,
+});
+assert.equal(validate({ value: "safe" }), true);
+assert.equal(validate({ value: 42 }), false);
+assert.equal(validate({ value: "NOT-LOWER" }), false);
+const probe = spawnSync(
+  process.execPath,
+  [
+    "-e",
+    `const uri = require(${JSON.stringify(ajvRequire.resolve("uri-js"))}); try { uri.resolve("https://example.test/a", "\\u2028/./x", { iri: true }); } catch {}`,
+  ],
+  { timeout: 2000, stdio: "ignore" },
+);
+assert.equal(
+  probe.status,
+  0,
+  "URI resolution must finish on Unicode separators",
+);
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(root, "tests", "lint-fixture-"));
