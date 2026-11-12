@@ -75,7 +75,10 @@ beforeAll(async () => {
     ["archive", "--format=tar.gz", `--prefix=${prefix}/`, oldRevision],
     { cwd: repoDir },
   );
-  await writeFile(join(repoDir, "README.md"), "Intended same-version build\n");
+  await writeFile(
+    join(repoDir, "README.md"),
+    "Intended same-version build\n" + "x".repeat(256 * 1024),
+  );
   git(repoDir, "add", ".");
   git(repoDir, "commit", "-m", "Intended fixture");
   revision = git(repoDir, "rev-parse", "HEAD");

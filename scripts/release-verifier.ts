@@ -113,7 +113,11 @@ export function verifyReleaseArchive(
   );
   if (kind === "source") {
     const marker = spawnSync("git", ["get-tar-commit-id"], {
-      input: gunzipSync(bytes, { maxOutputLength: 256 * 1024 * 1024 }),
+      // git reads only the first two tar records and closes stdin. Sending the
+      // whole archive can produce EPIPE for larger releases after a valid result.
+      input: gunzipSync(bytes, {
+        maxOutputLength: 256 * 1024 * 1024,
+      }).subarray(0, 1024),
       encoding: "utf8",
       maxBuffer: 1024,
       timeout: 30_000,
