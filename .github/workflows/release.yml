@@ -19,7 +19,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
   publish:
     name: Publish public image and release
-    needs: validate
+    needs: [validate, snyk]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      - run: npm ci --engine-strict
       - run: npm run release:check
       - name: Require the public repository and a new release
         env:
@@ -58,7 +58,7 @@ jobs:
       - name: Scan source and built files before publishing the image
         run: npm run secrets:check -- --path apps/web/dist --path apps/server/dist --path packages/rescue/dist
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -118,7 +118,7 @@ jobs:
           image-ref: ${{ env.RELEASE_IMAGE }}@${{ steps.published-image.outputs.digest }}
       - name: Publish release image findings
         if: always() && steps.release-image-scan.outputs.sarif-file != ''
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: ${{ steps.release-image-scan.outputs.sarif-file }}
           category: container-release
@@ -189,11 +189,34 @@ jobs:
           cd ../..
           gh release create "$RELEASE_TAG" dist/release/* --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Custodian $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
-      - name: Verify anonymous access to the published release
-        shell: bash
-        run: |
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/public-release.json"
-          jq --exit-status --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false and (.assets | length) == 5' "$RUNNER_TEMP/public-release.json" > /dev/null
       - name: Clean isolated image check
         if: always() && steps.smoke-config.outcome == 'success'
         run: docker compose -p custodian-release-check down --volumes
+  snyk:
+    name: Snyk release check
+    uses: ./.github/workflows/snyk.yml
+    secrets:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+  verify-public:
+    name: Verify public release
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --engine-strict
+      - name: Verify anonymously downloaded files and image
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REVISION: ${{ github.sha }}
+        run: npm run release:verify -- --tag "$RELEASE_TAG" --revision "$RELEASE_REVISION" --latest --output "$RUNNER_TEMP/public-release"
+      - name: Scan the actual public downloads
+        run: npm run secrets:check -- --artifacts-only --path "$RUNNER_TEMP/public-release"

@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import "./release-check.ts";
+import { verifyReleaseArchive } from "./release-verifier.ts";
 
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const git = (...args: string[]) =>
@@ -63,6 +64,11 @@ try {
     await mkdir(resolve(runtime, path, ".."), { recursive: true });
     await cp(path, join(runtime, path), { recursive: true });
   }
+  await writeFile(
+    join(runtime, "build-info.json"),
+    JSON.stringify({ schema: 1, version, revision }, null, 2) + "\n",
+    { flag: "wx" },
+  );
   execFileSync("tar", [
     "-czf",
     join(out, `${prefix}-runtime.tar.gz`),
@@ -70,6 +76,13 @@ try {
     staging,
     prefix,
   ]);
+  for (const kind of ["source", "runtime"] as const)
+    verifyReleaseArchive(
+      await readFile(join(out, `${prefix}-${kind}.tar.gz`)),
+      kind,
+      version,
+      revision,
+    );
   const sbom = execFileSync(
     "npm",
     ["sbom", "--omit=dev", "--sbom-format=cyclonedx"],

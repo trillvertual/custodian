@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      SNYK_TOKEN:
+        required: true
 permissions:
   contents: read
 jobs:
@@ -32,8 +36,8 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             tools/lint/package-lock.json
-      - run: npm ci --ignore-scripts
-      - run: npm ci --prefix tools/lint --ignore-scripts
+      - run: npm ci --ignore-scripts --engine-strict
+      - run: npm ci --prefix tools/lint --ignore-scripts --engine-strict
       - uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce # 2026-10-07
         with:
           snyk-version: v1.1308.4

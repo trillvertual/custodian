@@ -5,7 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      react-runtime:
+        patterns: ["react", "react-dom"]
     ignore:
+      - dependency-name: "@zxing/browser"
+        versions: ["0.2.1"] # Requires @zxing/library 0.23 and Node 24; runtime stays on Node 22.
       # Keep type definitions aligned with the Node 22 runtime and CI.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]

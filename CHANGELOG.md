@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-12
+
+- Совместно обновлены React и React DOM до 19.3.1; для них добавлена группа Dependabot и явные dev-зависимости корневых тестов. Раздельные обновления больше не создают конфликт версий renderer.
+- Обновлены Vitest 5.1.0, Playwright 1.65.0, CodeQL 4.39.3 и Docker login action 4.8.0. CI и сборка контейнера проверяют npm engines строго. QR-библиотека сохранена на совместимой с Node 22 ветке; версия 0.2.1 требует Node 24 через новую peer dependency.
+
 - Добавлены типизированный ESLint в изолированном dev-toolchain, Trivy для собранного и опубликованного образа, Snyk CI и правила Greptile. Активация Greptile/What The Diff описана отдельно; автоматический merge не включается.
 - По результатам Snyk Fastify обновлён до 5.12.8, dev-зависимость Undici – до 8.12.4; уязвимый URI-парсер в dev-цепочке линтера заменён ограниченным alias с проверкой совместимости, без подавления HIGH-находок.
 - Runtime-образ обновляет системные пакеты Debian и не содержит ненужные npm/npx/corepack. Обработка ошибок фоновых Promise и завершения сервера стала явной; форматы ключей и записей сохранены.
@@ -53,7 +58,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.1...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.2...main
+[0.5.2]: https://github.com/trillvertual/custodian/releases/tag/v0.5.2
 [0.5.1]: https://github.com/trillvertual/custodian/releases/tag/v0.5.1
 [0.5.0]: https://github.com/trillvertual/custodian/releases/tag/v0.5.0
 [0.4.0]: https://github.com/trillvertual/custodian/releases/tag/v0.4.0
