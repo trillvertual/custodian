@@ -1,6 +1,6 @@
 {
   "name": "custodian",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -29,12 +29,13 @@
     "secrets:check": "tsx scripts/secret-scan.ts",
     "lint": "node tools/lint/run.mjs",
     "lint:install": "npm ci --prefix tools/lint",
-    "lint:verify": "node tools/lint/verify.mjs"
+    "lint:verify": "node tools/lint/verify.mjs",
+    "release:verify": "tsx scripts/verify-public-release.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@electric-sql/pglite": "^0.5.8",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.65.0",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/jsdom": "^30.0.0",
@@ -47,9 +48,11 @@
     "jsdom": "^30.1.2",
     "prettier": "^3.9.10",
     "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsx": "^4.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.1.0"
   },
   "license": "MIT",
   "repository": {

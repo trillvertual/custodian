@@ -5,7 +5,7 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/rescue/package.json packages/rescue/package.json
-RUN npm ci
+RUN npm ci --engine-strict
 COPY scripts/compress-web.ts scripts/compress-web.ts
 COPY apps ./apps
 COPY packages ./packages

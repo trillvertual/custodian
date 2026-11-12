@@ -27,12 +27,12 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             tools/lint/package-lock.json
-      - run: npm ci
+      - run: npm ci --engine-strict
       - run: npm run secrets:check
       - run: npm run release:check
       - run: npm run format:check
       - run: npm run typecheck
-      - run: npm ci --prefix tools/lint --ignore-scripts
+      - run: npm ci --prefix tools/lint --ignore-scripts --engine-strict
       - run: npm audit --prefix tools/lint --audit-level=high
       - run: npm run lint
       - run: npm run lint:verify
@@ -76,7 +76,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      - run: npm ci --engine-strict
       - run: npm run configure -- --url https://vault.test
       - run: docker compose -p custodian-ci config --quiet
       - run: docker compose -p custodian-ci up -d --build --wait --wait-timeout 180
@@ -95,7 +95,7 @@ jobs:
           image-ref: ${{ steps.built-image.outputs.ref }}
       - name: Publish built image findings
         if: always() && steps.image-scan.outputs.sarif-file != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: ${{ steps.image-scan.outputs.sarif-file }}
           category: container-built
