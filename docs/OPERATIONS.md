@@ -98,13 +98,15 @@ SHA-256 выявляет повреждение assets, но не заменяе
 
 ## Проверка опубликованного релиза без авторизации
 
-Из исходников нужного тега после `npm ci`:
+Нужны Node.js из `.node-version`, Git и tar. В Git checkout с полученным нужным тегом после `npm ci`:
 
 ```bash
 npm run release:verify -- --tag v0.5.2 --revision "$(git rev-list -n 1 v0.5.2)" --latest --output ./dist/public-release-check
 npm run secrets:check -- --artifacts-only --path ./dist/public-release-check
 ```
 
-Каталог назначения должен отсутствовать или быть пустым: существующие файлы не перезаписываются. Проверка не читает GitHub/Snyk credentials, анонимно скачивает ровно пять assets, сверяет SHA-256, версию/revision архивов, LICENSE, SBOM, OCI manifest/config hashes, platform, labels и наличие attestation. Для проверки старого тега уберите `--latest`.
+Каталог назначения должен отсутствовать или быть пустым: существующие файлы не перезаписываются. Проверка не читает GitHub/Snyk credentials, анонимно скачивает ровно пять assets, сверяет SHA-256, Git-маркер source-архива и `build-info.json` runtime-архива с ожидаемым revision, LICENSE, SBOM, OCI manifest/config hashes, platform, labels и наличие attestation. Проверки архивов выполняются упаковщиком и до публикации. После полной проверки файлы создаются эксклюзивно, без перезаписи.
+
+Формат с runtime revision metadata используется начиная с v0.5.2. Для предыдущих релизов остаётся проверка `sha256sum --check SHA256SUMS`; эта строгая команда их не принимает. При проверке старого тега нового формата уберите `--latest`. Сверка подтверждает целостность и согласованность встроенных metadata доверенного pipeline, не воспроизводит сборку побайтно и не заменяет проверку криптографической подписи издателя.
 
 Release workflow выполняет тот же сценарий отдельным read-only job **Verify public release** после публикации. При временной сетевой ошибке повторяйте только этот job: публикация и уже загруженные assets не заменяются. Если файлы или digest не совпали, сначала выясните причину; существующий тег/образ не переписывайте.
