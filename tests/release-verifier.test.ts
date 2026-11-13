@@ -21,9 +21,18 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { verifyPublicRelease } from "../scripts/release-verifier.ts";
 
-const tag = "v0.5.2",
-  version = "0.5.2",
-  prefix = "custodian-0.5.2";
+const tag = "v0.5.3",
+  version = "0.5.3",
+  prefix = "custodian-0.5.3";
+const lockfile = {
+  lockfileVersion: 3,
+  version,
+  packages: {
+    "": { version },
+    "node_modules/synthetic-package": { version: "1.0.0" },
+    "node_modules/shared-runtime": { version: "2.0.0" },
+  },
+};
 const repo = "trillvertual/custodian",
   image = "trillvertual/custodian-app";
 const sourceName = `${prefix}-source.tar.gz`,
@@ -66,6 +75,7 @@ beforeAll(async () => {
     JSON.stringify({ version, private: true }),
   );
   await writeFile(join(repoDir, "LICENSE"), "MIT fixture\n");
+  await writeFile(join(repoDir, "package-lock.json"), JSON.stringify(lockfile));
   await writeFile(join(repoDir, "README.md"), "Earlier same-version build\n");
   git(repoDir, "add", ".");
   git(repoDir, "commit", "-m", "Earlier fixture");
@@ -111,6 +121,8 @@ interface Scenario {
   unsafeAssetUrl?: boolean;
   oversizedAsset?: boolean;
   releaseStatus?: number;
+  incompleteSbom?: boolean;
+  mismatchedRuntimeLock?: boolean;
 }
 async function setup(options: Scenario = {}) {
   const stage = join(root, `case-${++sequence}`),
@@ -121,6 +133,14 @@ async function setup(options: Scenario = {}) {
     JSON.stringify({ version, private: true }),
   );
   await writeFile(join(runtime, "LICENSE"), "MIT fixture\n");
+  await writeFile(
+    join(runtime, "package-lock.json"),
+    JSON.stringify(
+      options.mismatchedRuntimeLock
+        ? { ...lockfile, version: "0.0.0" }
+        : lockfile,
+    ),
+  );
   if (!options.omitBuildInfo)
     await writeFile(
       join(runtime, "build-info.json"),
@@ -184,7 +204,29 @@ async function setup(options: Scenario = {}) {
       `${prefix}-sbom.cdx.json`,
       encode({
         bomFormat: "CycloneDX",
-        components: [{ name: "synthetic-package", version: "1.0.0" }],
+        metadata: { component: { "bom-ref": "root", version } },
+        components: Object.entries(lockfile.packages)
+          .filter(
+            ([path]) =>
+              path &&
+              !(options.incompleteSbom && path.includes("shared-runtime")),
+          )
+          .map(([path, entry]) => {
+            const name = path.slice("node_modules/".length);
+            return {
+              "bom-ref": name,
+              name,
+              version: entry.version,
+              purl: `pkg:npm/${name}@${entry.version}`,
+              scope: "required",
+              properties: [{ name: "cdx:npm:package:path", value: path }],
+            };
+          }),
+        dependencies: [
+          { ref: "root", dependsOn: ["synthetic-package", "shared-runtime"] },
+          { ref: "synthetic-package", dependsOn: [] },
+          { ref: "shared-runtime", dependsOn: [] },
+        ],
       }),
     ],
     [
@@ -296,6 +338,8 @@ describe("public release verifier", () => {
       platform: "linux/amd64",
       anonymous: true,
       archiveRevisions: { source: revision, runtime: revision },
+      sbomComponents: 2,
+      sbomInstallations: 2,
     });
     expect(JSON.stringify(report)).not.toContain(token);
     expect((await readdir(test.output)).sort()).toEqual(
@@ -369,6 +413,16 @@ describe("public release verifier", () => {
       /unexpectedly large/,
     ],
     ["unavailable release", { releaseStatus: 404 }, /HTTP 404/],
+    [
+      "incomplete production SBOM",
+      { incompleteSbom: true },
+      /Missing production SBOM installation/,
+    ],
+    [
+      "mismatched archive lockfiles",
+      { mismatchedRuntimeLock: true },
+      /Source\/runtime lockfile mismatch/,
+    ],
   ] as const)(
     "rejects %s without persisting any downloaded file",
     async (_name, scenario, error) => {

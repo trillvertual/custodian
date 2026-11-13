@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
+import { verifyProductionSbom } from "./production-sbom.ts";
 
 export interface VerifyReleaseOptions {
   tag: string;
@@ -68,6 +69,17 @@ function digest(value: unknown): string {
   const result = string(value);
   assert.match(result, /^sha256:[a-f0-9]{64}$/);
   return result;
+}
+function archiveJson(bytes: Buffer, path: string): unknown {
+  return JSON.parse(
+    execFileSync("tar", ["-xzOf", "-", path], {
+      input: bytes,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }),
+  );
 }
 export function verifyReleaseArchive(
   bytes: Buffer,
@@ -256,9 +268,16 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
       revision,
     );
   const sbom = parse(file(`${prefix}-sbom.cdx.json`));
-  assert.ok(sbom.bomFormat === "CycloneDX", "Expected a CycloneDX SBOM");
-  const sbomComponents = array(sbom.components).length;
-  assert.ok(sbomComponents > 0, "Empty SBOM");
+  const sourceLock = archiveJson(
+    file(`${prefix}-source.tar.gz`),
+    `${prefix}/package-lock.json`,
+  );
+  const runtimeLock = archiveJson(
+    file(`${prefix}-runtime.tar.gz`),
+    `${prefix}/package-lock.json`,
+  );
+  assert.deepEqual(runtimeLock, sourceLock, "Source/runtime lockfile mismatch");
+  const inventory = verifyProductionSbom(sbom, sourceLock);
   // This short-lived registry token grants anonymous access only to the public
   // package. It is held in memory and never written to the verification report.
   const token = string(
@@ -350,7 +369,8 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
     platform: "linux/amd64",
     attestation: true,
     archiveRevisions: { source: revision, runtime: revision },
-    sbomComponents,
+    sbomComponents: inventory.components,
+    sbomInstallations: inventory.installations,
     anonymous: true,
     output,
   };

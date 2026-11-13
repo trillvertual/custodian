@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import "./release-check.ts";
+import { createProductionSbom } from "./production-sbom.ts";
 import { verifyReleaseArchive } from "./release-verifier.ts";
 
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
@@ -83,12 +84,7 @@ try {
       version,
       revision,
     );
-  const sbom = execFileSync(
-    "npm",
-    ["sbom", "--omit=dev", "--sbom-format=cyclonedx"],
-    { maxBuffer: 10 * 1024 * 1024 },
-  );
-  JSON.parse(sbom.toString());
+  const sbom = JSON.stringify(await createProductionSbom(), null, 2) + "\n";
   await writeFile(join(out, `${prefix}-sbom.cdx.json`), sbom);
   await writeFile(
     join(out, "release.json"),
