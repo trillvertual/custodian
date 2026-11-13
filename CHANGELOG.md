@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-13
+
+- Исправлен неполный production SBOM: зависимости, используемые приложением и корневыми тестами одновременно (включая Fastify, React и @noble/hashes), больше не теряются при экспорте npm. Установленные production-пакеты выбираются из полного CycloneDX inventory; одинаковые package refs объединяются с сохранением всех путей, hashes и лицензий.
+- Упаковка и независимая проверка опубликованного релиза сверяют версии и package identities с lockfile, обязательные production-пакеты и граф зависимостей. Source/runtime lockfiles должны совпадать. Неполная ведомость блокирует проверку; добавлены регрессионные тесты.
+- Node 22, схема БД 4 и форматы записей/rescue сохраняются. Опубликованные файлы v0.5.2 не заменяются.
+
 ## [0.5.2] - 2026-11-12
 
 - Совместно обновлены React и React DOM до 19.3.1; для них добавлена группа Dependabot и явные dev-зависимости корневых тестов. Раздельные обновления больше не создают конфликт версий renderer.
@@ -58,7 +64,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.2...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.3...main
+[0.5.3]: https://github.com/trillvertual/custodian/releases/tag/v0.5.3
 [0.5.2]: https://github.com/trillvertual/custodian/releases/tag/v0.5.2
 [0.5.1]: https://github.com/trillvertual/custodian/releases/tag/v0.5.1
 [0.5.0]: https://github.com/trillvertual/custodian/releases/tag/v0.5.0
