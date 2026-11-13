@@ -42,7 +42,10 @@ function fixture() {
     metadata: { component: { "bom-ref": "root", version: "1.0.0" } },
     components,
     dependencies: [
-      { ref: "root", dependsOn: ["@vault/server@1.0.0", "dev-tool@1.0.0"] },
+      {
+        ref: "root",
+        dependsOn: ["@vault/server@1.0.0", "dev-tool@1.0.0", "shared@2.0.0"],
+      },
       {
         ref: "@vault/server@1.0.0",
         dependsOn: ["shared@2.0.0", "shared-old@1.0.0"],
@@ -67,7 +70,13 @@ function fixture() {
       "node_modules/platform-optional": { version: "1.0.0", optional: true },
     },
   };
-  const production = new Set(["", ...paths]);
+  const production = new Map([
+    ["", new Set([paths[0]!])],
+    [paths[0]!, new Set([paths[1]!, paths[2]!, paths[3]!])],
+    [paths[1]!, new Set([paths[3]!])],
+    [paths[2]!, new Set([paths[3]!])],
+    [paths[3]!, new Set<string>()],
+  ]);
   return { full, lock, production };
 }
 
@@ -91,6 +100,13 @@ describe("production SBOM", () => {
       licenses: full.components[1]!.licenses,
     });
     expect(bom.components[1]!.properties).toHaveLength(2);
+    expect(
+      bom.dependencies.find((node) => node.ref === "root")!.dependsOn,
+    ).toEqual(["@vault/server@1.0.0"]);
+    expect(
+      bom.dependencies.find((node) => node.ref === "@vault/server@1.0.0")!
+        .dependsOn,
+    ).toContain("shared@2.0.0");
     expect(full).toEqual(before);
   });
 
@@ -107,6 +123,22 @@ describe("production SBOM", () => {
     full.components[2]!.hashes[0]!.content = "different-hash";
     expect(() => selectProductionSbom(full, production)).toThrow(
       /Conflicting SBOM package hashes/,
+    );
+  });
+
+  it("preserves licenses supplied only by a later duplicate component", () => {
+    const { full, production } = fixture();
+    Reflect.deleteProperty(full.components[1]!, "licenses");
+    const bom = selectProductionSbom(full, production);
+    expect(bom.components[1]!.licenses).toEqual(full.components[2]!.licenses);
+    expect(full.components[1]).not.toHaveProperty("licenses");
+  });
+
+  it("fails closed on conflicting licenses instead of dropping audit metadata", () => {
+    const { full, production } = fixture();
+    full.components[2]!.licenses[0]!.license.id = "ISC";
+    expect(() => selectProductionSbom(full, production)).toThrow(
+      /Conflicting SBOM package licenses/,
     );
   });
 
@@ -178,7 +210,7 @@ describe("production SBOM", () => {
 
   it("rejects development-only components even if the dependency graph includes them", () => {
     const { full, lock, production } = fixture();
-    production.add("node_modules/dev-tool");
+    production.set("node_modules/dev-tool", new Set());
     expect(() =>
       verifyProductionSbom(selectProductionSbom(full, production), lock),
     ).toThrow(/Non-production package in SBOM/);
@@ -201,5 +233,23 @@ describe("production SBOM", () => {
     );
     for (const name of ["vitest", "@playwright/test", "typescript"])
       expect(names).not.toContain(name);
+    const root = bom.dependencies.find(
+      (node) => !bom.components.some((c) => c["bom-ref"] === node.ref),
+    )!;
+    expect(root.dependsOn.every((ref) => ref.startsWith("@vault/"))).toBe(true);
+    const fastify = bom.components.find((c) => c.name === "fastify")![
+      "bom-ref"
+    ];
+    const react = bom.components.find((c) => c.name === "react")!["bom-ref"];
+    expect(root.dependsOn).not.toContain(fastify);
+    expect(root.dependsOn).not.toContain(react);
+    expect(
+      bom.dependencies.find((node) => node.ref.startsWith("@vault/server@"))!
+        .dependsOn,
+    ).toContain(fastify);
+    expect(
+      bom.dependencies.find((node) => node.ref.startsWith("@vault/web@"))!
+        .dependsOn,
+    ).toContain(react);
   });
 });

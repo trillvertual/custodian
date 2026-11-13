@@ -134,17 +134,18 @@ export function verifyProductionSbom(document: unknown, lockfile: unknown) {
 // inventory instead, retaining npm's licenses, hashes and dependency metadata.
 export function selectProductionSbom(
   document: unknown,
-  productionPaths: ReadonlySet<string>,
+  productionGraph: ReadonlyMap<string, ReadonlySet<string>>,
 ) {
   const bom = record(document);
   assert.ok(bom.bomFormat === "CycloneDX", "Expected CycloneDX SBOM");
   const root = record(record(bom.metadata).component),
     rootRef = text(root["bom-ref"]);
   const wanted = new Set(
-    [...productionPaths].filter((path) => path !== "" && path !== "."),
+    [...productionGraph.keys()].filter((path) => path !== "" && path !== "."),
   );
   const covered = new Set<string>(),
     selected = new Map<string, Record<string, unknown>>();
+  const refsByPath = new Map([["", rootRef]]);
   for (const component of list(bom.components).map(record)) {
     const [path] = locations(component);
     assert.ok(path !== undefined);
@@ -152,6 +153,7 @@ export function selectProductionSbom(
     covered.add(path);
     const ref = text(component["bom-ref"]),
       previous = selected.get(ref);
+    refsByPath.set(path, ref);
     if (!previous) {
       selected.set(ref, { ...component, scope: "required" });
       continue;
@@ -167,6 +169,15 @@ export function selectProductionSbom(
       component.hashes ?? [],
       "Conflicting SBOM package hashes",
     );
+    const previousLicenses = list(previous.licenses ?? []),
+      licenses = list(component.licenses ?? []);
+    if (previousLicenses.length && licenses.length)
+      assert.deepEqual(
+        previousLicenses,
+        licenses,
+        "Conflicting SBOM package licenses",
+      );
+    else if (licenses.length) previous.licenses = licenses;
     const properties = [
       ...list(previous.properties),
       ...list(component.properties),
@@ -182,14 +193,18 @@ export function selectProductionSbom(
       `Missing production SBOM installation: ${path}`,
     );
   assert.ok(selected.size > 0, "Production SBOM is empty");
-  const refs = new Set([rootRef, ...selected.keys()]);
   const graph = new Map<string, Set<string>>();
-  for (const node of list(bom.dependencies).map(record)) {
-    const ref = text(node.ref);
-    if (!refs.has(ref)) continue;
+  // Full npm SBOM edges include dev-only relationships between otherwise
+  // production packages. Rebuild edges from the independent production tree.
+  for (const [path, dependencies] of productionGraph) {
+    const ref = refsByPath.get(path);
+    assert.ok(ref, `Missing production SBOM graph parent: ${path}`);
     const children = graph.get(ref) ?? new Set<string>();
-    for (const child of list(node.dependsOn).map(text))
-      if (refs.has(child)) children.add(child);
+    for (const dependency of dependencies) {
+      const child = refsByPath.get(dependency);
+      assert.ok(child, `Missing production SBOM graph child: ${dependency}`);
+      children.add(child);
+    }
     graph.set(ref, children);
   }
   assert.ok(graph.has(rootRef), "SBOM has no root dependency graph");
@@ -211,28 +226,44 @@ export async function createProductionSbom() {
     }),
   );
   const root = await realpath(process.cwd());
-  const paths = execFileSync(
-    "npm",
-    ["ls", "--omit=dev", "--all", "--parseable"],
-    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-  )
-    .trim()
-    .split("\n");
-  const production = new Set(
-    await Promise.all(
-      paths.map(async (path) => {
-        const normalized = relative(root, await realpath(path)).replaceAll(
-          "\\",
-          "/",
-        );
+  const tree: unknown = JSON.parse(
+    execFileSync("npm", ["ls", "--omit=dev", "--all", "--json", "--long"], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    }),
+  );
+  const normalizedPaths = new Map<string, Promise<string>>();
+  function normalize(path: string) {
+    let pending = normalizedPaths.get(path);
+    if (!pending) {
+      pending = realpath(path).then((resolved) => {
+        const normalized = relative(root, resolved).replaceAll("\\", "/");
         assert.ok(
           !isAbsolute(normalized) && !normalized.split("/").includes(".."),
           "Production dependency is outside the checkout",
         );
         return normalized;
-      }),
-    ),
-  );
+      });
+      normalizedPaths.set(path, pending);
+    }
+    return pending;
+  }
+  const production = new Map<string, Set<string>>();
+  async function visit(value: unknown): Promise<string | undefined> {
+    const node = record(value);
+    // npm emits {} for uninstalled optional dependencies. Missing required
+    // packages make npm ls exit nonzero, before this tree can be consumed.
+    if (!Object.keys(node).length) return undefined;
+    const path = await normalize(text(node.path));
+    const children = production.get(path) ?? new Set<string>();
+    production.set(path, children);
+    for (const dependency of Object.values(record(node.dependencies ?? {}))) {
+      const child = await visit(dependency);
+      if (child !== undefined) children.add(child);
+    }
+    return path;
+  }
+  assert.equal(await visit(tree), "", "Production inventory root mismatch");
   const result = selectProductionSbom(full, production);
   const lockfile: unknown = JSON.parse(
     await readFile("package-lock.json", "utf8"),

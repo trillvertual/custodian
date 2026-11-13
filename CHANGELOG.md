@@ -64,7 +64,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.2...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.3...main
+[0.5.3]: https://github.com/trillvertual/custodian/releases/tag/v0.5.3
 [0.5.2]: https://github.com/trillvertual/custodian/releases/tag/v0.5.2
 [0.5.1]: https://github.com/trillvertual/custodian/releases/tag/v0.5.1
 [0.5.0]: https://github.com/trillvertual/custodian/releases/tag/v0.5.0
