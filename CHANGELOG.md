@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-14
+
+- Объединены проверенные обновления Dependabot: PGlite 0.5.16, fake-indexeddb 6.2.8, jsdom 31.0.0, Radix Slot 1.5.0 и Tabler Icons React 3.51.0. PGlite и IndexedDB используются в тестах; компоненты интерфейса остаются на React 19.3.1.
+- jsdom 31 используется только инструментами разработки. Для полного набора тестов нужен Node 22.22.2 или новее в совместимой ветке; используйте закреплённый Node из `.node-version`. Минимальный production runtime остаётся Node 22.12.0.
+- Сохранены проверки полноты production SBOM, встроенных revision архивов и точного опубликованного образа. Схема БД 4 и форматы записей/rescue совместимы с v0.5.3.
+
 ## [0.5.3] - 2026-11-13
 
 - Исправлен неполный production SBOM: зависимости, используемые приложением и корневыми тестами одновременно (включая Fastify, React и @noble/hashes), больше не теряются при экспорте npm. Установленные production-пакеты выбираются из полного CycloneDX inventory; одинаковые package refs объединяются с сохранением всех путей, hashes и лицензий.
@@ -64,7 +70,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.3...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.4...main
+[0.5.4]: https://github.com/trillvertual/custodian/releases/tag/v0.5.4
 [0.5.3]: https://github.com/trillvertual/custodian/releases/tag/v0.5.3
 [0.5.2]: https://github.com/trillvertual/custodian/releases/tag/v0.5.2
 [0.5.1]: https://github.com/trillvertual/custodian/releases/tag/v0.5.1
