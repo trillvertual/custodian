@@ -23,6 +23,7 @@ import {
   type Member,
   type SessionUser,
   type StoredRecord,
+  type PublicAuthConfig,
 } from "../../../packages/core/src/schemas.ts";
 import { config } from "./config.ts";
 import { type Database, transaction } from "./db.ts";
@@ -296,13 +297,9 @@ export async function buildApp(
     await db.query("SELECT 1");
     return { ok: true };
   });
-  app.get("/api/auth/config", async () => ({
+  app.get("/api/auth/config", async (): Promise<PublicAuthConfig> => ({
     initialized:
       (await db.query("SELECT 1 FROM vaults LIMIT 1")).rowCount !== 0,
-    providers: {
-      github: !!(config.GITHUB_CLIENT_ID && config.GITHUB_CLIENT_SECRET),
-      telegram: !!(config.TELEGRAM_CLIENT_ID && config.TELEGRAM_CLIENT_SECRET),
-    },
     rpId: config.rpId,
   }));
   app.post(
