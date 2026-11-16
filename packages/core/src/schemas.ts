@@ -1,4 +1,9 @@
 import { z } from "zod";
+// Public data required by the first-run screen and password domain separation.
+export type PublicAuthConfig = {
+  initialized: boolean;
+  rpId: string;
+};
 export const b64 = z
   .string()
   .regex(/^[A-Za-z0-9_-]+$/)

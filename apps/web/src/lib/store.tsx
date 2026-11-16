@@ -20,6 +20,7 @@ import {
   type DecryptedRecord,
   type SessionUser,
   type StoredRecord,
+  type PublicAuthConfig,
   type VaultRecord,
 } from "../../../../packages/core/src/index.ts";
 import { api, setCsrf, ApiError } from "./api.ts";
@@ -33,13 +34,8 @@ export type Session = {
   credentials: { id: string; prf: boolean }[];
   credentialId?: string | null;
 };
-export type AuthConfig = {
-  initialized: boolean;
-  providers: { github: boolean; telegram: boolean };
-  rpId: string;
-};
 export function useVault() {
-  const [config, setConfig] = useState<AuthConfig | null>(null),
+  const [config, setConfig] = useState<PublicAuthConfig | null>(null),
     [session, setSession] = useState<Session | null>(null),
     [records, setRecords] = useState<DecryptedRecord[]>([]),
     [unlocked, setUnlocked] = useState(false),
@@ -99,7 +95,7 @@ export function useVault() {
     void (async () => {
       try {
         await ready;
-        const value = await api<AuthConfig>("/auth/config");
+        const value = await api<PublicAuthConfig>("/auth/config");
         if (!mounted) return;
         setConfig(value);
         if (value.initialized) await refreshSession();

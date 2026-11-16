@@ -6,7 +6,11 @@ assert.equal(health.status, 200);
 assert.deepEqual(await health.json(), { ok: true });
 const config = await fetch(`${base}/api/auth/config`);
 assert.equal(config.status, 200);
-assert.equal((await config.json()).initialized, false);
+assert.deepEqual(await config.json(), {
+  initialized: false,
+  rpId: "vault.test",
+});
+assert.equal(config.headers.get("cache-control"), "no-store");
 const page = await fetch(base);
 assert.equal(page.status, 200);
 assert.ok(page.headers.get("content-security-policy"));

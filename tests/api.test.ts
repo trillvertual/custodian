@@ -83,9 +83,10 @@ describe("closed authentication and shared vault", () => {
     expect((await send("/records", "GET", undefined, "none")).statusCode).toBe(
       401,
     );
-    expect(
-      (await send("/auth/config", "GET", undefined, "none")).json().initialized,
-    ).toBe(false);
+    const config = await app.inject({ method: "GET", url: "/api/auth/config" });
+    expect(config.statusCode).toBe(200);
+    expect(config.json()).toEqual({ initialized: false, rpId: "localhost" });
+    expect(config.headers["cache-control"]).toBe("no-store");
   });
   it("bootstraps exactly one owner with a setup code", async () => {
     const recovery = createRecovery(root.key!, vaultId, 1);
@@ -120,7 +121,9 @@ describe("closed authentication and shared vault", () => {
     ownerCookie = String(result.headers["set-cookie"]).split(";")[0]!;
     ownerCsrf = result.json().csrf;
     expect((await send("/auth/bootstrap", "POST", input)).statusCode).toBe(409);
-    expect((await send("/auth/config")).json().initialized).toBe(true);
+    const config = await send("/auth/config", "GET", undefined, "none");
+    expect(config.statusCode).toBe(200);
+    expect(config.json()).toEqual({ initialized: true, rpId: "localhost" });
   });
   it("enforces Origin and CSRF on session mutations", async () => {
     const withoutCsrf = await app.inject({
@@ -328,7 +331,7 @@ describe("closed authentication and shared vault", () => {
       (await send("/auth/passkey/verify", "POST", input, "none")).statusCode,
     ).toBe(400);
   });
-  it("verifies a signed Passkey assertion and rejects missing user verification", async () => {
+  it("verifies signed Passkey assertions and rejects wrong ceremony context or missing user verification", async () => {
     const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const jwk = pair.publicKey.export({ format: "jwk" });
     const credentialId = randomBytes(32).toString("base64url");
@@ -343,20 +346,27 @@ describe("closed authentication and shared vault", () => {
       "INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up) VALUES($1,$2,$3,0,'[]','singleDevice',false)",
       [credentialId, ownerId, cose],
     );
-    async function assertion(flags: number, counter: number) {
+    async function assertion(
+      flags: number,
+      counter: number,
+      context: { origin?: string; rpId?: string; challenge?: string } = {},
+    ) {
       const options = (
         await send("/auth/passkey/options", "POST", undefined, "none")
       ).json();
       const client = Buffer.from(
         JSON.stringify({
           type: "webauthn.get",
-          challenge: options.options.challenge,
-          origin: "http://localhost:5173",
+          challenge: context.challenge ?? options.options.challenge,
+          origin: context.origin ?? "http://localhost:5173",
           crossOrigin: false,
         }),
       );
       const authenticator = Buffer.alloc(37);
-      createHash("sha256").update("localhost").digest().copy(authenticator);
+      createHash("sha256")
+        .update(context.rpId ?? "localhost")
+        .digest()
+        .copy(authenticator);
       authenticator[32] = flags;
       authenticator.writeUInt32BE(counter, 33);
       const signature = sign(
@@ -396,7 +406,26 @@ describe("closed authentication and shared vault", () => {
         ])
       ).rows[0].counter,
     ).toBe(1);
+    const sessionsBefore = (await db.query("SELECT 1 FROM sessions")).rowCount;
     expect((await assertion(0x01, 2)).statusCode).toBe(401);
+    // The signatures and HTTP Origin are valid: the WebAuthn verifier must
+    // reject these mismatched ceremony values without creating a session.
+    for (const context of [
+      { origin: "https://attacker.invalid" },
+      { rpId: "attacker.invalid" },
+      { challenge: randomBytes(32).toString("base64url") },
+    ])
+      expect((await assertion(0x05, 2, context)).statusCode).toBe(401);
+    expect((await db.query("SELECT 1 FROM sessions")).rowCount).toBe(
+      sessionsBefore,
+    );
+    expect(
+      (
+        await db.query("SELECT counter FROM credentials WHERE id=$1", [
+          credentialId,
+        ])
+      ).rows[0].counter,
+    ).toBe(1);
     expect((await send("/auth/password", "DELETE")).statusCode).toBe(400);
   });
   it("binds GitHub account linking to browser state and uses PKCE", async () => {

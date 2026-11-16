@@ -34,16 +34,6 @@ import { Brand } from "./brand";
 import { Button } from "./ui/button";
 import { Field, PasswordField, Submit, ErrorMessage } from "./forms";
 export { Brand } from "./brand";
-export async function providerLogin(
-  provider: "github" | "telegram",
-  link = false,
-) {
-  const result = await api<{ url: string }>("/auth/oauth/start", "POST", {
-    provider,
-    link,
-  });
-  location.assign(result.url);
-}
 export function AuthScreen({ store }: { store: VaultStore }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),

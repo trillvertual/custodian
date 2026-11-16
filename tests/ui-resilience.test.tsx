@@ -157,7 +157,6 @@ afterEach(() => {
 it("opens the app when browser storage rejects the theme preference", async () => {
   mocks.api.mockResolvedValue({
     initialized: false,
-    providers: { github: false, telegram: false },
     rpId: "localhost",
   });
   vi.spyOn(window.Storage.prototype, "getItem").mockImplementation(() => {
