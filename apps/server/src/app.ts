@@ -98,9 +98,8 @@ export async function audit(
     [userId, action, target, JSON.stringify(detail)],
   );
 }
-export async function makeSession(
-  db: Database,
-  reply: FastifyReply,
+async function insertSession(
+  db: Database | import("pg").PoolClient,
   userId: string,
   method: string,
   credentialId: string | null = null,
@@ -111,6 +110,12 @@ export async function makeSession(
     "INSERT INTO sessions(token_hash,user_id,csrf,method,credential_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '12 hours')",
     [hash(raw), userId, csrf, method, credentialId],
   );
+  return { raw, csrf };
+}
+function respondWithSession(
+  reply: FastifyReply,
+  { raw, csrf }: { raw: string; csrf: string },
+) {
   reply.setCookie(
     config.secure ? "__Host-vault-session" : "vault-session",
     raw,
@@ -123,6 +128,18 @@ export async function makeSession(
     },
   );
   return { csrf };
+}
+export async function makeSession(
+  db: Database,
+  reply: FastifyReply,
+  userId: string,
+  method: string,
+  credentialId: string | null = null,
+) {
+  return respondWithSession(
+    reply,
+    await insertSession(db, userId, method, credentialId),
+  );
 }
 export function requireAuth(req: FastifyRequest): Auth {
   if (!req.auth) throw new HttpError(401, "Войдите в аккаунт.");
@@ -374,8 +391,30 @@ export async function buildApp(
         await audit(db, null, "auth.failed");
         throw new HttpError(401, "Неверный логин или пароль.");
       }
-      await audit(db, user.id, "auth.login", null, { method: "password" });
-      return makeSession(db, reply, user.id, "password");
+      // Serialize session creation with credential changes without holding a
+      // row lock during scrypt.
+      const session = await transaction(db, async (c) => {
+        const current = (
+          await c.query(
+            "SELECT password_hash,password_login_version,status FROM users WHERE id=$1 FOR UPDATE",
+            [user.id],
+          )
+        ).rows[0];
+        if (
+          !current ||
+          current.status === "suspended" ||
+          current.password_login_version !== 1 ||
+          current.password_hash !== user.password_hash
+        )
+          return null;
+        await audit(c, user.id, "auth.login", null, { method: "password" });
+        return insertSession(c, user.id, "password");
+      });
+      if (!session) {
+        await audit(db, null, "auth.failed");
+        throw new HttpError(401, "Неверный логин или пароль.");
+      }
+      return respondWithSession(reply, session);
     },
   );
   app.get("/api/auth/session", async (req) => {
