@@ -78,13 +78,21 @@ curl --fail http://127.0.0.1:8080/api/health
 
 ```bash
 docker compose stop app
-docker compose exec -T db pg_restore -U vault -d vault --clean --if-exists --no-owner < backups/CHOSEN_PRE_UPDATE.dump
-# Верните предыдущие .env/compose.yaml и точный образ.
+docker compose exec -T db pg_restore -U vault -d vault \
+  --clean --if-exists --no-owner --single-transaction \
+  < backups/CHOSEN_PRE_UPDATE.dump
+```
+
+При ошибке транзакция восстановления откатится. Оставьте приложение остановленным и выясните причину.
+
+После успешного восстановления верните предыдущие `.env`, `compose.yaml` и точный образ. Запустите приложение и проверьте доступ:
+
+```bash
 docker compose up -d --no-build --wait --wait-timeout 180
 curl --fail http://127.0.0.1:8080/api/health
 ```
 
-Проверьте exit code восстановления и пользовательский доступ. `docker compose down --volumes` удаляет базу; на production эту команду не используйте. Rescue CLI и восстановление owner описаны в [README](../README.md#rescue-cli).
+Проверьте вход и открытие записи. `docker compose down --volumes` удаляет базу; на production эту команду не используйте. Rescue CLI и восстановление owner описаны в [README](../README.md#rescue-cli).
 
 ## Сопровождение
 
