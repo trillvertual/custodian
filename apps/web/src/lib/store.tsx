@@ -38,6 +38,7 @@ export function useVault() {
   const [config, setConfig] = useState<PublicAuthConfig | null>(null),
     [session, setSession] = useState<Session | null>(null),
     [records, setRecords] = useState<DecryptedRecord[]>([]),
+    [unreadableCount, setUnreadableCount] = useState(0),
     [unlocked, setUnlocked] = useState(false),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -61,6 +62,7 @@ export function useVault() {
     erase(keys.current?.vaultKey);
     keys.current = null;
     setRecords([]);
+    setUnreadableCount(0);
     setUnlocked(false);
     setUnlockHint("");
   }, []);
@@ -132,16 +134,27 @@ export function useVault() {
         lock();
         throw new Error("Ключ хранилища изменился. Разблокируйте его заново.");
       }
-      const result = stored.map((r) => ({
-        ...r,
-        data: recordSchema.parse(
-          decryptJson(
-            r.box,
-            currentKeys.vaultKey,
-            recordContext(current.user.vaultId, r.id, r.version, r.epoch),
-          ),
-        ),
-      }));
+      const result: DecryptedRecord[] = [];
+      for (const record of stored) {
+        try {
+          const data = recordSchema.parse(
+            decryptJson(
+              record.box,
+              currentKeys.vaultKey,
+              recordContext(
+                current.user.vaultId,
+                record.id,
+                record.version,
+                record.epoch,
+              ),
+            ),
+          );
+          result.push({ ...record, data });
+        } catch {
+          // A damaged envelope must not block recovery of intact records.
+        }
+      }
+      setUnreadableCount(stored.length - result.length);
       setRecords(result);
     },
     [session, lock],
@@ -459,6 +472,7 @@ export function useVault() {
     config,
     session,
     records,
+    unreadableCount,
     unlocked,
     loading,
     error,

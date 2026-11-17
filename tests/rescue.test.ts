@@ -78,6 +78,27 @@ it("rescue CLI decrypts a real encrypted backup, protects output permissions and
     await expect(
       exec(command, [...args, "--allow-plaintext"]),
     ).rejects.toThrow();
+    const originalBackup = JSON.parse(
+      await readFile(join(dir, "backup.json"), "utf8"),
+    );
+    originalBackup.records.push({ id: "unreadable" });
+    await writeFile(join(dir, "backup.json"), JSON.stringify(originalBackup));
+    const partialArgs = args.map((arg) =>
+      arg === join(dir, "credentials.json") ? join(dir, "partial.json") : arg,
+    );
+    await expect(
+      exec(command, [...partialArgs, "--allow-plaintext"]),
+    ).rejects.toThrow();
+    await exec(command, [
+      ...partialArgs,
+      "--allow-plaintext",
+      "--allow-partial",
+    ]);
+    const partial = JSON.parse(
+      await readFile(join(dir, "partial.json"), "utf8"),
+    );
+    expect(partial.records).toEqual(plaintext.records);
+    expect(partial.skippedRows).toEqual([2]);
     const wrong = createRecovery(key, vaultId, 1);
     await writeFile(join(dir, "wrong-key.txt"), wrong.code);
     await expect(

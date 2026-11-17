@@ -297,13 +297,15 @@ it("keeps the newest record response when concurrent refreshes finish in reverse
   const first = hook.result.current.loadRecords(session);
   const second = hook.result.current.loadRecords(session);
   await act(async () => {
-    newer.resolve([newRecord]);
+    newer.resolve([newRecord, { ...oldRecord, id: crypto.randomUUID() }]);
     await second;
   });
   await act(async () => {
     older.resolve([oldRecord]);
     await first;
   });
+  expect(hook.result.current.unreadableCount).toBe(1);
+  expect(hook.result.current.records).toHaveLength(1);
   expect(hook.result.current.records[0]?.version).toBe(2);
   expect(hook.result.current.records[0]?.data.title).toBe(
     "Newest synthetic record",
