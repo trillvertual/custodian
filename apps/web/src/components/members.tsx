@@ -152,6 +152,22 @@ export function Members({ store }: { store: VaultStore }) {
     setRevoke(m);
     setRevokeOpen(true);
   }
+  async function suspend() {
+    if (!revoke || !beginMutation()) return;
+    try {
+      await api(`/members/${revoke.id}/suspend`, "POST");
+      if (!mounted.current) return;
+      setRevokeOpen(false);
+      await load();
+      toast.success(
+        "Доступ отключён. Смена ключа доступна в списке участников.",
+      );
+    } catch (error) {
+      if (mounted.current) toast.error((error as Error).message);
+    } finally {
+      endMutation();
+    }
+  }
   async function disable() {
     if (
       !revoke ||
@@ -189,6 +205,36 @@ export function Members({ store }: { store: VaultStore }) {
           recordContext(user.vaultId, r.id, r.version, nextEpoch),
         ),
       });
+      const operation = crypto.randomUUID();
+      const chunks: string[] = [];
+      for (const kind of ["records", "history"] as const) {
+        let rows: ReturnType<typeof rotate>[] = [];
+        let bytes = 0;
+        async function upload() {
+          if (!rows.length) return;
+          if (!mounted.current || store.keys.current !== currentKeys)
+            throw new Error("Смена ключа отменена.");
+          const result = await api<{ token: string }>(
+            "/rotation/chunks",
+            "POST",
+            { kind, rows },
+          );
+          chunks.push(result.token);
+          rows = [];
+          bytes = 0;
+        }
+        for (const record of snapshot[kind]) {
+          const row = rotate(record);
+          // The encrypted row contains only ASCII JSON and base64url.
+          const length = JSON.stringify(row).length + 1;
+          if (rows.length >= 100 || bytes + length > 4 * 1024 * 1024)
+            await upload();
+          rows.push(row);
+          bytes += length;
+        }
+        await upload();
+      }
+      if (!mounted.current || store.keys.current !== currentKeys) return;
       await api("/rotation", "POST", {
         snapshot: snapshot.snapshot,
         revokeId: revoke.id,
@@ -206,8 +252,8 @@ export function Members({ store }: { store: VaultStore }) {
               nextEpoch,
             ),
           })),
-        records: snapshot.records.map(rotate),
-        history: snapshot.history.map(rotate),
+        operation,
+        chunks,
       });
       if (mounted.current) {
         setRevoke(null);
@@ -321,17 +367,21 @@ export function Members({ store }: { store: VaultStore }) {
                             Выдать доступ
                           </Button>
                         )}
-                        {m.status !== "suspended" && (
+                        {
                           <Button
                             variant="ghost"
                             size="icon"
-                            aria-label={`Отключить ${m.displayName}`}
+                            aria-label={
+                              m.status === "suspended"
+                                ? `Сменить ключ после отключения ${m.displayName}`
+                                : `Отключить ${m.displayName}`
+                            }
                             disabled={busy}
                             onClick={() => startRevoke(m)}
                           >
                             <UserRoundMinus size={17} />
                           </Button>
-                        )}
+                        }
                       </div>
                     )}
                   </TableCell>
@@ -432,7 +482,11 @@ export function Members({ store }: { store: VaultStore }) {
           setRevoke(null);
           setRecovery(null);
         }}
-        title={`Отключить ${revoke?.displayName ?? "участника"}?`}
+        title={
+          revoke?.status === "suspended"
+            ? "Сменить ключ хранилища?"
+            : `Отключить ${revoke?.displayName ?? "участника"}?`
+        }
         description="Приложение сменит ключ и перешифрует хранилище, корзину и историю."
       >
         <p>
@@ -440,7 +494,7 @@ export function Members({ store }: { store: VaultStore }) {
           соответствующих сервисах.
         </p>
         <p>
-          Перед отключением сохраните новый rescue-ключ. Старый ключ нужен для
+          Перед сменой ключа сохраните новый rescue-ключ. Старый ключ нужен для
           старых резервных копий.
         </p>
         <Button
@@ -470,12 +524,19 @@ export function Members({ store }: { store: VaultStore }) {
           >
             Отмена
           </Button>
+          {revoke?.status !== "suspended" && (
+            <Button variant="outline" disabled={busy} onClick={suspend}>
+              Отключить сейчас, сменить ключ позже
+            </Button>
+          )}
           <Button
             variant="destructive"
             disabled={!downloaded || !saved || busy}
             onClick={disable}
           >
-            Отключить и сменить ключ
+            {revoke?.status === "suspended"
+              ? "Сменить ключ"
+              : "Отключить и сменить ключ"}
           </Button>
         </div>
       </Dialog>

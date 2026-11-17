@@ -830,6 +830,12 @@ export async function buildApp(
     const pw = await passwordHash(input.loginSecret);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const live = await c.query(
+        "SELECT 1 FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=$1 AND expires_at>now() AND users.status<>'suspended' FOR UPDATE OF users",
+        [a.sessionHash],
+      );
+      if (!live.rowCount)
+        throw new HttpError(401, "Сессия истекла. Войдите заново.");
       await c.query(
         "UPDATE users SET identity=$1,password_hash=$3,password_login_version=1,sealed_key=NULL,status='pending' WHERE id=$2",
         [input.identity, a.user.id, pw],
@@ -870,6 +876,12 @@ export async function buildApp(
       .parse(req.body);
     return transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const live = await c.query(
+        "SELECT 1 FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=$1 AND expires_at>now() AND users.status='active' AND users.sealed_key IS NOT NULL",
+        [a.sessionHash],
+      );
+      if (!live.rowCount)
+        throw new HttpError(403, "Доступ к хранилищу отозван.");
       const vault = (await c.query("SELECT epoch FROM vaults")).rows[0];
       if (vault.epoch !== input.epoch)
         throw new HttpError(
@@ -1015,14 +1027,50 @@ export async function buildApp(
       };
     });
   });
-  app.post("/api/rotation", async (req) => {
-    const a = owner(req);
-    recent(req);
-    const rotated = z.object({
+  const rotated = z
+    .object({
       id: uuid,
       version: z.number().int().positive(),
       box: encryptedSchema,
+    })
+    .strict();
+  const rotationChunk = z
+    .object({
+      operation: uuid,
+      kind: z.enum(["records", "history"]),
+      rows: z.array(rotated).min(1).max(100),
+    })
+    .strict();
+  const rotationPurpose = (a: Auth, operation: string) =>
+    `rotation:${a.sessionHash}:${operation}`;
+  app.post("/api/rotation/chunks", async (req) => {
+    const a = owner(req);
+    recent(req);
+    const chunk = rotationChunk.parse(req.body);
+    return {
+      token: await newFlow(db, rotationPurpose(a, chunk.operation), chunk, 15),
+    };
+  });
+  app.post("/api/members/:id/suspend", async (req) => {
+    const a = owner(req);
+    recent(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return transaction(db, async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const result = await c.query(
+        "UPDATE users SET status='suspended',sealed_key=NULL WHERE id=$1 AND role='admin' RETURNING id",
+        [id],
+      );
+      if (!result.rowCount)
+        throw new HttpError(404, "Администратор не найден.");
+      await c.query("DELETE FROM sessions WHERE user_id=$1", [id]);
+      await audit(c, a.user.id, "member.suspended", id);
+      return { ok: true };
     });
+  });
+  app.post("/api/rotation", async (req) => {
+    const a = owner(req);
+    recent(req);
     const input = z
       .object({
         snapshot: z.string().length(64),
@@ -1034,13 +1082,58 @@ export async function buildApp(
             z.object({ id: uuid, publicKey: b64.length(43), sealedKey: b64 }),
           )
           .max(500),
-        records: z.array(rotated).max(10000),
-        history: z.array(rotated).max(50000),
+        records: z.array(rotated).max(10000).default([]),
+        history: z.array(rotated).max(50000).default([]),
+        chunks: z.array(b64.length(43)).max(1500).default([]),
+        operation: uuid.optional(),
       })
       .strict()
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const live = await c.query(
+        "SELECT 1 FROM sessions WHERE token_hash=$1 AND expires_at>now()",
+        [a.sessionHash],
+      );
+      if (!live.rowCount)
+        throw new HttpError(401, "Сессия истекла. Войдите заново.");
+      if (input.chunks.length) {
+        if (
+          !input.operation ||
+          input.records.length ||
+          input.history.length ||
+          new Set(input.chunks).size !== input.chunks.length
+        )
+          throw new HttpError(400, "Некорректный набор частей ротации.");
+        const hashes = input.chunks.map(hash);
+        const purpose = rotationPurpose(a, input.operation);
+        const size = await c.query(
+          "SELECT count(*)::int AS count, coalesce(sum(octet_length(payload::text)),0)::bigint AS bytes FROM flows WHERE token_hash=ANY($1::text[]) AND purpose=$2 AND expires_at>now()",
+          [hashes, purpose],
+        );
+        if (
+          size.rows[0].count !== hashes.length ||
+          Number(size.rows[0].bytes) > 128 * 1024 * 1024
+        )
+          throw new HttpError(
+            400,
+            "Части ротации истекли или превышают 128 МиБ.",
+          );
+        const chunks = await c.query(
+          "DELETE FROM flows WHERE token_hash=ANY($1::text[]) AND purpose=$2 AND expires_at>now() RETURNING payload",
+          [hashes, purpose],
+        );
+        if (chunks.rowCount !== hashes.length)
+          throw new HttpError(
+            409,
+            "Части ротации изменились. Повторите действие.",
+          );
+        for (const { payload } of chunks.rows) {
+          const chunk = rotationChunk.parse(payload);
+          const rows = input[chunk.kind];
+          for (const row of chunk.rows) rows.push(row);
+        }
+      }
       const s = await snapshot(c);
       if (
         snapshotHash(s) !== input.snapshot ||
@@ -1051,11 +1144,7 @@ export async function buildApp(
           "Хранилище изменилось. Повторите отключение участника.",
         );
       const revoked = s.users.find((u) => u.id === input.revokeId);
-      if (
-        !revoked ||
-        revoked.role === "owner" ||
-        revoked.status === "suspended"
-      )
+      if (!revoked || revoked.role === "owner")
         throw new HttpError(400, "Нельзя отключить этого участника.");
       const members = s.users.filter(
         (u) => u.status === "active" && u.id !== input.revokeId,
@@ -1075,14 +1164,11 @@ export async function buildApp(
         [s.records, input.records],
         [s.history, input.history],
       ] as const) {
+        const identities = new Set(incoming.map((r) => `${r.id}:${r.version}`));
         if (
           existing.length !== incoming.length ||
-          new Set(incoming.map((r) => `${r.id}:${r.version}`)).size !==
-            existing.length ||
-          existing.some(
-            (r) =>
-              !incoming.find((v) => v.id === r.id && v.version === r.version),
-          )
+          identities.size !== existing.length ||
+          existing.some((r) => !identities.has(`${r.id}:${r.version}`))
         )
           throw new HttpError(400, "Неполный набор зашифрованных записей.");
       }
