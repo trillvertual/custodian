@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${CUSTODIAN_IMAGE:-ghcr.io/trillvertual/custodian-app:v0.5.4}
+    image: ${CUSTODIAN_IMAGE:-ghcr.io/trillvertual/custodian-app:v0.5.5}
     build: .
     restart: unless-stopped
     init: true
