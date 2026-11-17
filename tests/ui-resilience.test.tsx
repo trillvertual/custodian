@@ -365,6 +365,18 @@ it("does not let a cancelled unlock clear the keys and records of a newer unlock
   expect(hook.result.current.keys.current).toBe(newerKeys);
   expect(hook.result.current.unlocked).toBe(true);
   expect(hook.result.current.records[0]?.version).toBe(2);
+  const other = {
+    ...current,
+    user: { ...current.user, id: crypto.randomUUID() },
+  };
+  mocks.api.mockResolvedValueOnce(other);
+  await act(async () => {
+    await hook.result.current.refreshSession();
+  });
+  expect(hook.result.current.session?.user.id).toBe(other.user.id);
+  expect(hook.result.current.unlocked).toBe(false);
+  expect(hook.result.current.keys.current).toBeNull();
+  expect(hook.result.current.records).toEqual([]);
   erase(identity.privateKey);
 });
 
