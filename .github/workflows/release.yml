@@ -87,7 +87,7 @@ jobs:
           else
             grep -q 'HTTP 404' "$RUNNER_TEMP/package-error"
           fi
-      - name: Build and publish
+      - name: Push candidate image for digest checks
         id: image
         if: steps.existing-image.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -95,7 +95,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ${{ env.RELEASE_IMAGE }}:${{ github.ref_name }}
+          tags: ${{ env.RELEASE_IMAGE }}:candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           build-args: |
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
@@ -177,6 +177,18 @@ jobs:
         run: npm run release:package
       - name: Scan the release archives and metadata
         run: npm run secrets:check -- --artifacts-only --path dist/release
+      - name: Assign release tag to the checked image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.published-image.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
+        shell: bash
+        run: |
+          tag="$RELEASE_IMAGE:$RELEASE_TAG"
+          if test -z "$EXISTING_DIGEST"; then
+            docker buildx imagetools create --tag "$tag" "$RELEASE_IMAGE@$IMAGE_DIGEST"
+          fi
+          resolved=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -er .digest)
+          test "$resolved" = "$IMAGE_DIGEST"
       - name: Publish release after uploading all assets
         env:
           GH_TOKEN: ${{ github.token }}
