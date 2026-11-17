@@ -1044,20 +1044,39 @@ export async function buildApp(
     .strict();
   const rotationPurpose = (a: Auth, operation: string) =>
     `rotation:${a.sessionHash}:${operation}`;
-  app.post("/api/rotation/chunks", async (req) => {
-    const a = owner(req);
-    recent(req);
-    const chunk = rotationChunk.parse(req.body);
-    return {
-      token: await newFlow(db, rotationPurpose(a, chunk.operation), chunk, 15),
-    };
-  });
+  // A rotation uses its own request budget so normal API traffic does not
+  // interrupt staging. The byte and row limits keep a supported rotation
+  // below this budget without raising the public limit.
+  app.post(
+    "/api/rotation/chunks",
+    { config: { rateLimit: { max: 300, timeWindow: "1 minute" } } },
+    async (req) => {
+      const a = owner(req);
+      recent(req);
+      const chunk = rotationChunk.parse(req.body);
+      return {
+        token: await newFlow(
+          db,
+          rotationPurpose(a, chunk.operation),
+          chunk,
+          15,
+        ),
+      };
+    },
+  );
   async function requireLiveRotationOwner(
     c: import("pg").PoolClient,
     actor: Auth,
   ) {
+    // Match credential changes: lock the user before the session.
+    const user = await c.query(
+      "SELECT 1 FROM users WHERE id=$1 AND role='owner' AND status='active' AND sealed_key IS NOT NULL FOR UPDATE",
+      [actor.user.id],
+    );
+    if (!user.rowCount)
+      throw new HttpError(403, "Действие доступно только владельцу.");
     const live = await c.query(
-      "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND s.authenticated_at>=clock_timestamp()-interval '15 minutes' AND u.role='owner' AND u.status='active' AND u.sealed_key IS NOT NULL FOR UPDATE OF s",
+      "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() AND authenticated_at>=clock_timestamp()-interval '15 minutes' FOR UPDATE",
       [actor.sessionHash, actor.user.id],
     );
     if (!live.rowCount)

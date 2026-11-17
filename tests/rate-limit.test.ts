@@ -66,3 +66,19 @@ describe("password login rate limits", () => {
     expect((await attempt("192.0.2.20", "198.51.100.99")).statusCode).toBe(429);
   });
 });
+
+it("keeps rotation staging and the normal API in separate request budgets", async () => {
+  const remoteAddress = "192.0.2.30";
+  const health = () => app.inject({ url: "/api/health", remoteAddress });
+  const staged = await app.inject({
+    method: "POST",
+    url: "/api/rotation/chunks",
+    remoteAddress,
+    headers: { origin: "http://localhost:5173" },
+    payload: {},
+  });
+  expect(staged.statusCode).toBe(401);
+  expect(staged.headers["x-ratelimit-remaining"]).toBe("299");
+  expect((await health()).headers["x-ratelimit-remaining"]).toBe("299");
+  expect((await health()).headers["x-ratelimit-remaining"]).toBe("298");
+});
