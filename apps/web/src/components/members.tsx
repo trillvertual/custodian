@@ -29,6 +29,7 @@ import {
   encryptJson,
   decryptJson,
   recordContext,
+  rotationChunkRowLimit,
   erase,
   type Member,
   type StoredRecord,
@@ -227,7 +228,10 @@ export function Members({ store }: { store: VaultStore }) {
           const row = rotate(record);
           // The encrypted row contains only ASCII JSON and base64url.
           const length = JSON.stringify(row).length + 1;
-          if (rows.length >= 100 || bytes + length > 4 * 1024 * 1024)
+          if (
+            rows.length >= rotationChunkRowLimit ||
+            bytes + length > 4 * 1024 * 1024
+          )
             await upload();
           rows.push(row);
           bytes += length;

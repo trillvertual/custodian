@@ -499,8 +499,10 @@ it.each([true, false])(
         snapshot: "synthetic-snapshot",
         epoch: 1,
         members: [session.user, admin],
-        records: [fixtureRecord(store)],
-        history: [],
+        records: [],
+        history: Array.from({ length: 101 }, (_, index) =>
+          fixtureRecord(store, index + 1),
+        ),
       });
     });
     if (unmount) {
@@ -520,12 +522,15 @@ it.each([true, false])(
         "POST",
         expect.objectContaining({
           operation: expect.any(String),
-          kind: "records",
+          kind: "history",
         }),
       );
-      const [, , upload] = mocks.api.mock.calls.find(
+      const uploads = mocks.api.mock.calls.filter(
         ([path]) => path === "/rotation/chunks",
-      )!;
+      );
+      expect(uploads).toHaveLength(1);
+      const [, , upload] = uploads[0]!;
+      expect(upload.rows).toHaveLength(101);
       expect(mocks.api).toHaveBeenCalledWith(
         "/rotation",
         "POST",

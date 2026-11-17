@@ -18,6 +18,7 @@ import {
 import {
   encryptedSchema,
   identitySchema,
+  rotationChunkRowLimit,
   b64,
   uuid,
   type Member,
@@ -1038,7 +1039,7 @@ export async function buildApp(
     .object({
       operation: uuid,
       kind: z.enum(["records", "history"]),
-      rows: z.array(rotated).min(1).max(100),
+      rows: z.array(rotated).min(1).max(rotationChunkRowLimit),
     })
     .strict();
   const rotationPurpose = (a: Auth, operation: string) =>
@@ -1051,12 +1052,24 @@ export async function buildApp(
       token: await newFlow(db, rotationPurpose(a, chunk.operation), chunk, 15),
     };
   });
+  async function requireLiveRotationOwner(
+    c: import("pg").PoolClient,
+    actor: Auth,
+  ) {
+    const live = await c.query(
+      "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND s.authenticated_at>=clock_timestamp()-interval '15 minutes' AND u.role='owner' AND u.status='active' AND u.sealed_key IS NOT NULL FOR UPDATE OF s",
+      [actor.sessionHash, actor.user.id],
+    );
+    if (!live.rowCount)
+      throw new HttpError(401, "Сессия истекла. Войдите заново.");
+  }
   app.post("/api/members/:id/suspend", async (req) => {
     const a = owner(req);
     recent(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     return transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      await requireLiveRotationOwner(c, a);
       const result = await c.query(
         "UPDATE users SET status='suspended',sealed_key=NULL WHERE id=$1 AND role='admin' RETURNING id",
         [id],
@@ -1091,12 +1104,7 @@ export async function buildApp(
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
-      const live = await c.query(
-        "SELECT 1 FROM sessions WHERE token_hash=$1 AND expires_at>now()",
-        [a.sessionHash],
-      );
-      if (!live.rowCount)
-        throw new HttpError(401, "Сессия истекла. Войдите заново.");
+      await requireLiveRotationOwner(c, a);
       if (input.chunks.length) {
         if (
           !input.operation ||
