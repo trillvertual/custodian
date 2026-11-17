@@ -453,55 +453,88 @@ it("cancels an unlock before session lookup completes and erases PRF on a failed
   expect(prf.every((value) => value === 0)).toBe(true);
 });
 
-it("requires a saved rescue key and cancels rotation if its owner screen unmounts during the snapshot request", async () => {
-  const snapshot = deferred<unknown>();
-  const store = fixtureStore();
-  const admin: Member = {
-    ...session.user,
-    id: "20000000-0000-4000-8000-000000000004",
-    username: "synthetic-admin",
-    displayName: "Synthetic Admin",
-    role: "admin",
-  };
-  mocks.api.mockImplementation((path: string) =>
-    path === "/members"
-      ? Promise.resolve([session.user, admin])
-      : snapshot.promise,
-  );
-  const view = render(
-    <PageChromeProvider>
-      <Members store={store} />
-    </PageChromeProvider>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Отключить Synthetic Admin" }),
-  );
-  const confirmation = screen.getByRole("checkbox", {
-    name: "Новый ключ сохранён отдельно от сервера",
-  });
-  expect((confirmation as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Скачать новый rescue-ключ" }),
-  );
-  expect((confirmation as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.click(confirmation);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Отключить и сменить ключ" }),
-  );
-  expect(mocks.api).toHaveBeenCalledWith("/rotation");
-  view.unmount();
-  await act(async () => {
-    snapshot.resolve({
-      snapshot: "synthetic-snapshot",
-      epoch: 1,
-      members: [session.user, admin],
-      records: [],
-      history: [],
+it.each([true, false])(
+  "requires a saved rescue key and respects cancellation (unmount: %s)",
+  async (unmount) => {
+    const snapshot = deferred<unknown>();
+    const store = fixtureStore();
+    const admin: Member = {
+      ...session.user,
+      id: "20000000-0000-4000-8000-000000000004",
+      username: "synthetic-admin",
+      displayName: "Synthetic Admin",
+      role: "admin",
+    };
+    mocks.api.mockImplementation((path: string, method?: string) => {
+      if (path === "/members") return Promise.resolve([session.user, admin]);
+      if (path === "/rotation/chunks")
+        return Promise.resolve({ token: "synthetic-chunk" });
+      if (method === "POST") return Promise.resolve({ ok: true });
+      return snapshot.promise;
     });
-  });
-  expect(
-    mocks.api.mock.calls.some(
-      ([path, method]) => path === "/rotation" && method === "POST",
-    ),
-  ).toBe(false);
-});
+    const view = render(
+      <PageChromeProvider>
+        <Members store={store} />
+      </PageChromeProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Отключить Synthetic Admin" }),
+    );
+    const confirmation = screen.getByRole("checkbox", {
+      name: "Новый ключ сохранён отдельно от сервера",
+    });
+    expect((confirmation as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Скачать новый rescue-ключ" }),
+    );
+    expect((confirmation as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirmation);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Отключить и сменить ключ" }),
+    );
+    expect(mocks.api).toHaveBeenCalledWith("/rotation");
+    if (unmount) view.unmount();
+    await act(async () => {
+      snapshot.resolve({
+        snapshot: "synthetic-snapshot",
+        epoch: 1,
+        members: [session.user, admin],
+        records: [fixtureRecord(store)],
+        history: [],
+      });
+    });
+    if (unmount) {
+      expect(mocks.api).not.toHaveBeenCalledWith(
+        "/rotation/chunks",
+        "POST",
+        expect.anything(),
+      );
+      expect(mocks.api).not.toHaveBeenCalledWith(
+        "/rotation",
+        "POST",
+        expect.anything(),
+      );
+    } else {
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/rotation/chunks",
+        "POST",
+        expect.objectContaining({
+          operation: expect.any(String),
+          kind: "records",
+        }),
+      );
+      const [, , upload] = mocks.api.mock.calls.find(
+        ([path]) => path === "/rotation/chunks",
+      )!;
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/rotation",
+        "POST",
+        expect.objectContaining({
+          operation: upload.operation,
+          chunks: ["synthetic-chunk"],
+        }),
+      );
+      expect(store.lock).toHaveBeenCalledOnce();
+    }
+  },
+);

@@ -217,7 +217,7 @@ export function Members({ store }: { store: VaultStore }) {
           const result = await api<{ token: string }>(
             "/rotation/chunks",
             "POST",
-            { kind, rows },
+            { operation, kind, rows },
           );
           chunks.push(result.token);
           rows = [];
