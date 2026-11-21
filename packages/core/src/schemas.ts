@@ -1,4 +1,5 @@
 import { z } from "zod";
+export const rotationChunkRowLimit = 500;
 // Public data required by the first-run screen and password domain separation.
 export type PublicAuthConfig = {
   initialized: boolean;

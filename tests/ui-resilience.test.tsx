@@ -297,13 +297,15 @@ it("keeps the newest record response when concurrent refreshes finish in reverse
   const first = hook.result.current.loadRecords(session);
   const second = hook.result.current.loadRecords(session);
   await act(async () => {
-    newer.resolve([newRecord]);
+    newer.resolve([newRecord, { ...oldRecord, id: crypto.randomUUID() }]);
     await second;
   });
   await act(async () => {
     older.resolve([oldRecord]);
     await first;
   });
+  expect(hook.result.current.unreadableCount).toBe(1);
+  expect(hook.result.current.records).toHaveLength(1);
   expect(hook.result.current.records[0]?.version).toBe(2);
   expect(hook.result.current.records[0]?.data.title).toBe(
     "Newest synthetic record",
@@ -363,6 +365,18 @@ it("does not let a cancelled unlock clear the keys and records of a newer unlock
   expect(hook.result.current.keys.current).toBe(newerKeys);
   expect(hook.result.current.unlocked).toBe(true);
   expect(hook.result.current.records[0]?.version).toBe(2);
+  const other = {
+    ...current,
+    user: { ...current.user, id: crypto.randomUUID() },
+  };
+  mocks.api.mockResolvedValueOnce(other);
+  await act(async () => {
+    await hook.result.current.refreshSession();
+  });
+  expect(hook.result.current.session?.user.id).toBe(other.user.id);
+  expect(hook.result.current.unlocked).toBe(false);
+  expect(hook.result.current.keys.current).toBeNull();
+  expect(hook.result.current.records).toEqual([]);
   erase(identity.privateKey);
 });
 
@@ -439,55 +453,93 @@ it("cancels an unlock before session lookup completes and erases PRF on a failed
   expect(prf.every((value) => value === 0)).toBe(true);
 });
 
-it("requires a saved rescue key and cancels rotation if its owner screen unmounts during the snapshot request", async () => {
-  const snapshot = deferred<unknown>();
-  const store = fixtureStore();
-  const admin: Member = {
-    ...session.user,
-    id: "20000000-0000-4000-8000-000000000004",
-    username: "synthetic-admin",
-    displayName: "Synthetic Admin",
-    role: "admin",
-  };
-  mocks.api.mockImplementation((path: string) =>
-    path === "/members"
-      ? Promise.resolve([session.user, admin])
-      : snapshot.promise,
-  );
-  const view = render(
-    <PageChromeProvider>
-      <Members store={store} />
-    </PageChromeProvider>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Отключить Synthetic Admin" }),
-  );
-  const confirmation = screen.getByRole("checkbox", {
-    name: "Новый ключ сохранён отдельно от сервера",
-  });
-  expect((confirmation as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Скачать новый rescue-ключ" }),
-  );
-  expect((confirmation as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.click(confirmation);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Отключить и сменить ключ" }),
-  );
-  expect(mocks.api).toHaveBeenCalledWith("/rotation");
-  view.unmount();
-  await act(async () => {
-    snapshot.resolve({
-      snapshot: "synthetic-snapshot",
-      epoch: 1,
-      members: [session.user, admin],
-      records: [],
-      history: [],
+it.each([true, false])(
+  "requires a saved rescue key and respects cancellation (unmount: %s)",
+  async (unmount) => {
+    const snapshot = deferred<unknown>();
+    const store = fixtureStore();
+    const admin: Member = {
+      ...session.user,
+      id: "20000000-0000-4000-8000-000000000004",
+      username: "synthetic-admin",
+      displayName: "Synthetic Admin",
+      role: "admin",
+    };
+    mocks.api.mockImplementation((path: string, method?: string) => {
+      if (path === "/members") return Promise.resolve([session.user, admin]);
+      if (path === "/rotation/chunks")
+        return Promise.resolve({ token: "synthetic-chunk" });
+      if (method === "POST") return Promise.resolve({ ok: true });
+      return snapshot.promise;
     });
-  });
-  expect(
-    mocks.api.mock.calls.some(
-      ([path, method]) => path === "/rotation" && method === "POST",
-    ),
-  ).toBe(false);
-});
+    const view = render(
+      <PageChromeProvider>
+        <Members store={store} />
+      </PageChromeProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Отключить Synthetic Admin" }),
+    );
+    const confirmation = screen.getByRole("checkbox", {
+      name: "Новый ключ сохранён отдельно от сервера",
+    });
+    expect((confirmation as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Скачать новый rescue-ключ" }),
+    );
+    expect((confirmation as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirmation);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Отключить и сменить ключ" }),
+    );
+    expect(mocks.api).toHaveBeenCalledWith("/rotation");
+    if (unmount) view.unmount();
+    await act(async () => {
+      snapshot.resolve({
+        snapshot: "synthetic-snapshot",
+        epoch: 1,
+        members: [session.user, admin],
+        records: [],
+        history: Array.from({ length: 101 }, (_, index) =>
+          fixtureRecord(store, index + 1),
+        ),
+      });
+    });
+    if (unmount) {
+      expect(mocks.api).not.toHaveBeenCalledWith(
+        "/rotation/chunks",
+        "POST",
+        expect.anything(),
+      );
+      expect(mocks.api).not.toHaveBeenCalledWith(
+        "/rotation",
+        "POST",
+        expect.anything(),
+      );
+    } else {
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/rotation/chunks",
+        "POST",
+        expect.objectContaining({
+          operation: expect.any(String),
+          kind: "history",
+        }),
+      );
+      const uploads = mocks.api.mock.calls.filter(
+        ([path]) => path === "/rotation/chunks",
+      );
+      expect(uploads).toHaveLength(1);
+      const [, , upload] = uploads[0]!;
+      expect(upload.rows).toHaveLength(101);
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/rotation",
+        "POST",
+        expect.objectContaining({
+          operation: upload.operation,
+          chunks: ["synthetic-chunk"],
+        }),
+      );
+      expect(store.lock).toHaveBeenCalledOnce();
+    }
+  },
+);

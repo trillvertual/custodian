@@ -21,6 +21,7 @@ backup --output PATH
   Create an encrypted, consistent backup using DATABASE_URL.
 
 decrypt --backup PATH --key-file PATH --output PATH --allow-plaintext
+  Add --allow-partial to export readable records and list skipped row numbers.
   Decrypt a backup locally. Output contains passwords and is written with mode 0600.
 
 recover-owner --key-file PATH --password-file PATH
@@ -39,6 +40,7 @@ const { values, positionals } = parseArgs({
     "key-file": { type: "string" },
     "password-file": { type: "string" },
     "allow-plaintext": { type: "boolean" },
+    "allow-partial": { type: "boolean" },
     help: { type: "boolean" },
   },
 });
@@ -72,9 +74,11 @@ try {
         "Plaintext export requires --allow-plaintext. The output will contain all credentials.",
       );
     if (!values.backup) throw new Error("Required --backup");
-    const backup = backupSchema.parse(
-      JSON.parse(await readFile(values.backup, "utf8")),
-    );
+    const input: unknown = JSON.parse(await readFile(values.backup, "utf8"));
+    const backup = backupSchema.omit({ records: true }).parse(input);
+    const rows = (input as { records?: unknown }).records;
+    if (!Array.isArray(rows))
+      throw new Error("Backup records must be an array.");
     const key = recoverVault(
       backup.vault.recovery,
       await file("key-file"),
@@ -82,22 +86,42 @@ try {
       backup.vault.epoch,
     );
     try {
-      const records = backup.records.map((r) => ({
-        ...r,
-        box: undefined,
-        data: recordSchema.parse(
-          decryptJson(
-            r.box,
-            key,
-            recordContext(backup.vault.id, r.id, r.version, r.epoch),
-          ),
-        ),
-      }));
+      const records = [];
+      const skippedRows: number[] = [];
+      for (const [index, row] of rows.entries()) {
+        try {
+          const { box, ...record } =
+            backupSchema.shape.records.element.parse(row);
+          records.push({
+            ...record,
+            data: recordSchema.parse(
+              decryptJson(
+                box,
+                key,
+                recordContext(
+                  backup.vault.id,
+                  record.id,
+                  record.version,
+                  record.epoch,
+                ),
+              ),
+            ),
+          });
+        } catch (error) {
+          if (!values["allow-partial"]) throw error;
+          skippedRows.push(index + 1);
+        }
+      }
       await output({
         format: "shared-vault-plaintext",
         vault: backup.vault.name,
         records,
+        ...(skippedRows.length ? { skippedRows } : {}),
       });
+      if (skippedRows.length)
+        process.stderr.write(
+          `Partial export: skipped ${skippedRows.length} unreadable record(s). See skippedRows in the output.\n`,
+        );
     } finally {
       erase(key);
     }

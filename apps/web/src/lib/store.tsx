@@ -38,6 +38,7 @@ export function useVault() {
   const [config, setConfig] = useState<PublicAuthConfig | null>(null),
     [session, setSession] = useState<Session | null>(null),
     [records, setRecords] = useState<DecryptedRecord[]>([]),
+    [unreadableCount, setUnreadableCount] = useState(0),
     [unlocked, setUnlocked] = useState(false),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -45,6 +46,7 @@ export function useVault() {
   const keys = useRef<{ privateKey: Uint8Array; vaultKey: Uint8Array } | null>(
     null,
   );
+  const unlockedUser = useRef<SessionUser | null>(null);
   const recordsRequest = useRef(0);
   const sessionRequest = useRef(0);
   const authGeneration = useRef(0);
@@ -60,7 +62,9 @@ export function useVault() {
     erase(keys.current?.privateKey);
     erase(keys.current?.vaultKey);
     keys.current = null;
+    unlockedUser.current = null;
     setRecords([]);
+    setUnreadableCount(0);
     setUnlocked(false);
     setUnlockHint("");
   }, []);
@@ -70,17 +74,34 @@ export function useVault() {
       const request = ++sessionRequest.current;
       try {
         const value = await api<Session>("/auth/session");
-        if (generation !== authGeneration.current) return null;
-        if (request === sessionRequest.current) {
-          setCsrf(value.csrf);
-          if (publish) setSession(value);
+        if (
+          generation !== authGeneration.current ||
+          request !== sessionRequest.current
+        )
+          return null;
+        const previous = unlockedUser.current,
+          next = value.user;
+        if (
+          previous &&
+          (previous.id !== next.id ||
+            previous.vaultId !== next.vaultId ||
+            previous.publicKey !== next.publicKey ||
+            previous.epoch !== next.epoch ||
+            next.status !== "active" ||
+            !next.sealedKey)
+        ) {
+          lock();
+          setRecovery(null);
         }
+        setCsrf(value.csrf);
+        if (publish) setSession(value);
         return value;
       } catch (e) {
         if (generation !== authGeneration.current) return null;
         if (e instanceof ApiError && e.status === 401) {
           if (request !== sessionRequest.current) return null;
           setSession(null);
+          setRecovery(null);
           setCsrf("");
           lock();
           return null;
@@ -132,16 +153,27 @@ export function useVault() {
         lock();
         throw new Error("Ключ хранилища изменился. Разблокируйте его заново.");
       }
-      const result = stored.map((r) => ({
-        ...r,
-        data: recordSchema.parse(
-          decryptJson(
-            r.box,
-            currentKeys.vaultKey,
-            recordContext(current.user.vaultId, r.id, r.version, r.epoch),
-          ),
-        ),
-      }));
+      const result: DecryptedRecord[] = [];
+      for (const record of stored) {
+        try {
+          const data = recordSchema.parse(
+            decryptJson(
+              record.box,
+              currentKeys.vaultKey,
+              recordContext(
+                current.user.vaultId,
+                record.id,
+                record.version,
+                record.epoch,
+              ),
+            ),
+          );
+          result.push({ ...record, data });
+        } catch {
+          // A damaged envelope must not block recovery of intact records.
+        }
+      }
+      setUnreadableCount(stored.length - result.length);
       setRecords(result);
     },
     [session, lock],
@@ -173,6 +205,7 @@ export function useVault() {
         erase(keys.current?.privateKey);
         erase(keys.current?.vaultKey);
         keys.current = currentKeys;
+        unlockedUser.current = current.user;
         await loadRecords(current);
         if (
           generation !== authGeneration.current ||
@@ -185,6 +218,7 @@ export function useVault() {
         erase(vaultKey);
         if (keys.current === currentKeys) {
           keys.current = null;
+          unlockedUser.current = null;
           setRecords([]);
           setUnlocked(false);
         }
@@ -326,6 +360,7 @@ export function useVault() {
   async function logout() {
     await api("/auth/logout", "POST");
     lock();
+    setRecovery(null);
     setSession(null);
     setCsrf("");
   }
@@ -445,20 +480,17 @@ export function useVault() {
   useEffect(() => {
     if (!session) return;
     const timer = setInterval(() => {
-      void refreshSession()
-        .then((current) => {
-          if (current && current.user.epoch !== session.user.epoch) lock();
-        })
-        .catch(() => {
-          // A transient refresh failure leaves the current session unchanged.
-        });
+      void refreshSession().catch(() => {
+        // A transient refresh failure leaves the current session unchanged.
+      });
     }, 30000);
     return () => clearInterval(timer);
-  }, [session?.user.id, session?.user.epoch, refreshSession, lock]);
+  }, [session?.user.id, refreshSession]);
   return {
     config,
     session,
     records,
+    unreadableCount,
     unlocked,
     loading,
     error,

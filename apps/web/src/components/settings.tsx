@@ -112,6 +112,7 @@ const labels: Record<string, string> = {
   "member.invited": "Создано приглашение",
   "member.joined": "Участник зарегистрирован",
   "member.approved": "Доступ выдан",
+  "member.suspended": "Доступ участника отключён",
   "member.revoked": "Участник отключён, ключ сменён",
   "member.recovery.requested": "Запрошено восстановление",
   "owner.rescue": "Доступ владельца восстановлен через CLI",

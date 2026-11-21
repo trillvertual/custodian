@@ -7,11 +7,11 @@
 Скачайте файлы релиза через GitHub или `gh`:
 
 ```bash
-gh release download v0.5.4 --repo trillvertual/custodian --dir custodian-download
+gh release download v0.5.5 --repo trillvertual/custodian --dir custodian-download
 cd custodian-download
 sha256sum --check SHA256SUMS
-tar -xzf custodian-0.5.4-source.tar.gz
-cd custodian-0.5.4
+tar -xzf custodian-0.5.5-source.tar.gz
+cd custodian-0.5.5
 npm ci
 npm run configure -- --url https://vault.example.com
 ```
@@ -78,13 +78,21 @@ curl --fail http://127.0.0.1:8080/api/health
 
 ```bash
 docker compose stop app
-docker compose exec -T db pg_restore -U vault -d vault --clean --if-exists --no-owner < backups/CHOSEN_PRE_UPDATE.dump
-# Верните предыдущие .env/compose.yaml и точный образ.
+docker compose exec -T db pg_restore -U vault -d vault \
+  --clean --if-exists --no-owner --single-transaction \
+  < backups/CHOSEN_PRE_UPDATE.dump
+```
+
+При ошибке транзакция восстановления откатится. Оставьте приложение остановленным и выясните причину.
+
+После успешного восстановления верните предыдущие `.env`, `compose.yaml` и точный образ. Запустите приложение и проверьте доступ:
+
+```bash
 docker compose up -d --no-build --wait --wait-timeout 180
 curl --fail http://127.0.0.1:8080/api/health
 ```
 
-Проверьте exit code восстановления и пользовательский доступ. `docker compose down --volumes` удаляет базу; на production эту команду не используйте. Rescue CLI и восстановление owner описаны в [README](../README.md#rescue-cli).
+Проверьте вход и открытие записи. `docker compose down --volumes` удаляет базу; на production эту команду не используйте. Rescue CLI и восстановление owner описаны в [README](../README.md#rescue-cli).
 
 ## Сопровождение
 
@@ -101,7 +109,7 @@ SHA-256 выявляет повреждение assets, но не заменяе
 Нужны Node.js из `.node-version`, Git и tar. В Git checkout с полученным нужным тегом после `npm ci`:
 
 ```bash
-npm run release:verify -- --tag v0.5.4 --revision "$(git rev-list -n 1 v0.5.4)" --latest --output ./dist/public-release-check
+npm run release:verify -- --tag v0.5.5 --revision "$(git rev-list -n 1 v0.5.5)" --latest --output ./dist/public-release-check
 npm run secrets:check -- --artifacts-only --path ./dist/public-release-check
 ```
 

@@ -464,6 +464,13 @@ function VaultShell({
           <SettingsPage store={store} />
         ) : (
           <>
+            {store.unreadableCount > 0 && (
+              <p role="alert" className="error-message">
+                Не удалось прочитать записи ({store.unreadableCount}). Доступные
+                записи можно открыть. Для восстановления проверьте резервную
+                копию.
+              </p>
+            )}
             <PageHeader
               title={pageTitle}
               actions={

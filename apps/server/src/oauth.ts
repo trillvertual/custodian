@@ -7,7 +7,9 @@ import {
   HttpError,
   newFlow,
   takeFlow,
-  makeSession,
+  insertSession,
+  respondWithSession,
+  lockRecentActor,
   recent,
   audit,
 } from "./app.ts";
@@ -190,7 +192,9 @@ export function registerOAuth(app: FastifyInstance, db: Database) {
       }
       // Never create users or link identities by mutable usernames/email addresses.
       if (flow.userId) {
+        const actor = recent(req);
         await transaction(db, async (c) => {
+          await lockRecentActor(c, actor);
           const found = (
             await c.query(
               "SELECT user_id FROM identities WHERE provider=$1 AND subject=$2",
@@ -213,28 +217,39 @@ export function registerOAuth(app: FastifyInstance, db: Database) {
               409,
               "Для этого провайдера уже подключён другой аккаунт.",
             );
-          await c.query(
+          if (existing?.subject === subject) return;
+          const linked = await c.query(
             "INSERT INTO identities(provider,subject,user_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
             [provider, subject, flow.userId],
           );
+          if (!linked.rowCount)
+            throw new HttpError(
+              409,
+              "Связь аккаунта изменилась. Повторите действие.",
+            );
           await audit(c, flow.userId, "auth.provider.linked", null, {
             provider,
           });
         });
       } else {
-        const found = (
-          await db.query(
-            "SELECT u.id FROM identities i JOIN users u ON u.id=i.user_id WHERE i.provider=$1 AND i.subject=$2 AND u.status<>'suspended'",
-            [provider, subject],
-          )
-        ).rows[0];
-        if (!found)
-          throw new HttpError(
-            403,
-            "Аккаунт не подключён. Сначала присоединитесь по приглашению.",
-          );
-        await makeSession(db, reply, found.id, provider);
-        await audit(db, found.id, "auth.login", null, { method: provider });
+        const session = await transaction(db, async (c) => {
+          // Recovery removes linked identities and sessions under the same lock.
+          await c.query("SELECT pg_advisory_xact_lock(7364292)");
+          const found = (
+            await c.query(
+              "SELECT u.id FROM identities i JOIN users u ON u.id=i.user_id WHERE i.provider=$1 AND i.subject=$2 AND u.status<>'suspended' FOR UPDATE OF u",
+              [provider, subject],
+            )
+          ).rows[0];
+          if (!found)
+            throw new HttpError(
+              403,
+              "Аккаунт не подключён. Сначала присоединитесь по приглашению.",
+            );
+          await audit(c, found.id, "auth.login", null, { method: provider });
+          return insertSession(c, found.id, provider);
+        });
+        respondWithSession(reply, session);
       }
       return reply.redirect("/?auth=success");
     } catch (error) {

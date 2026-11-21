@@ -120,6 +120,7 @@ interface Scenario {
   omitAttestation?: boolean;
   unsafeAssetUrl?: boolean;
   oversizedAsset?: boolean;
+  understatedSize?: boolean;
   releaseStatus?: number;
   incompleteSbom?: boolean;
   mismatchedRuntimeLock?: boolean;
@@ -252,7 +253,9 @@ async function setup(options: Scenario = {}) {
     size:
       options.oversizedAsset && name === sourceName
         ? 129 * 1024 * 1024
-        : bytes.length,
+        : options.understatedSize && name === sourceName
+          ? 1
+          : bytes.length,
     browser_download_url:
       options.unsafeAssetUrl && name === sourceName
         ? "https://example.invalid/other.tar.gz"
@@ -411,6 +414,11 @@ describe("public release verifier", () => {
       "oversized asset metadata",
       { oversizedAsset: true },
       /unexpectedly large/,
+    ],
+    [
+      "body exceeds advertised size",
+      { understatedSize: true },
+      /exceeds size limit/,
     ],
     ["unavailable release", { releaseStatus: 404 }, /HTTP 404/],
     [

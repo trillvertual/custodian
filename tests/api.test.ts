@@ -599,6 +599,19 @@ describe("closed authentication and shared vault", () => {
     expect((await send("/auth/passkey/" + id, "DELETE")).statusCode).toBe(200);
   });
   it("requires complete, current ciphertext when revoking and rotates history too", async () => {
+    expect((await send(`/members/${ownerId}/suspend`, "POST")).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await send(`/members/${adminId}/suspend`, "POST", undefined, "admin"))
+        .statusCode,
+    ).toBe(403);
+    expect((await send(`/members/${adminId}/suspend`, "POST")).statusCode).toBe(
+      200,
+    );
+    expect((await send("/records", "GET", undefined, "admin")).statusCode).toBe(
+      401,
+    );
     const snapshot = (await send("/rotation")).json();
     rotationSnapshot = snapshot.snapshot;
     const next = randomKey(),
@@ -641,7 +654,23 @@ describe("closed authentication and shared vault", () => {
         recordContext(vaultId, r.id, r.version, 2),
       ),
     }));
-    expect((await send("/rotation", "POST", rotation)).statusCode).toBe(200);
+    const operation = randomUUID();
+    const chunks: string[] = [];
+    for (const kind of ["records", "history"] as const) {
+      const part = await send("/rotation/chunks", "POST", {
+        operation,
+        kind,
+        rows: rotation[kind],
+      });
+      expect(part.statusCode).toBe(200);
+      chunks.push(part.json().token);
+    }
+    const staged = { ...rotation, records: [], history: [], operation, chunks };
+    expect(
+      (await send("/rotation", "POST", { ...staged, chunks: [chunks[0]] }))
+        .statusCode,
+    ).toBe(400);
+    expect((await send("/rotation", "POST", staged)).statusCode).toBe(200);
     expect((await send("/records", "GET", undefined, "admin")).statusCode).toBe(
       401,
     );

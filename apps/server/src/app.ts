@@ -18,6 +18,7 @@ import {
 import {
   encryptedSchema,
   identitySchema,
+  rotationChunkRowLimit,
   b64,
   uuid,
   type Member,
@@ -98,9 +99,8 @@ export async function audit(
     [userId, action, target, JSON.stringify(detail)],
   );
 }
-export async function makeSession(
-  db: Database,
-  reply: FastifyReply,
+export async function insertSession(
+  db: Database | import("pg").PoolClient,
   userId: string,
   method: string,
   credentialId: string | null = null,
@@ -111,6 +111,12 @@ export async function makeSession(
     "INSERT INTO sessions(token_hash,user_id,csrf,method,credential_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '12 hours')",
     [hash(raw), userId, csrf, method, credentialId],
   );
+  return { raw, csrf };
+}
+export function respondWithSession(
+  reply: FastifyReply,
+  { raw, csrf }: { raw: string; csrf: string },
+) {
   reply.setCookie(
     config.secure ? "__Host-vault-session" : "vault-session",
     raw,
@@ -123,6 +129,18 @@ export async function makeSession(
     },
   );
   return { csrf };
+}
+export async function makeSession(
+  db: Database,
+  reply: FastifyReply,
+  userId: string,
+  method: string,
+  credentialId: string | null = null,
+) {
+  return respondWithSession(
+    reply,
+    await insertSession(db, userId, method, credentialId),
+  );
 }
 export function requireAuth(req: FastifyRequest): Auth {
   if (!req.auth) throw new HttpError(401, "Войдите в аккаунт.");
@@ -146,8 +164,34 @@ export function recent(req: FastifyRequest): Auth {
     throw new HttpError(403, "Для этого действия войдите заново.");
   return a;
 }
+export async function lockRecentActor(
+  c: import("pg").PoolClient,
+  actor: Auth,
+  ownerOnly = false,
+) {
+  // Match credential changes: lock the user before the session.
+  const user = await c.query(
+    "SELECT role,status,sealed_key FROM users WHERE id=$1 AND status<>'suspended' FOR UPDATE",
+    [actor.user.id],
+  );
+  const current = user.rows[0];
+  if (
+    !current ||
+    (ownerOnly &&
+      (current.role !== "owner" ||
+        current.status !== "active" ||
+        !current.sealed_key))
+  )
+    throw new HttpError(403, "Недостаточно прав для этого действия.");
+  const live = await c.query(
+    "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() AND authenticated_at>=clock_timestamp()-interval '15 minutes' FOR UPDATE",
+    [actor.sessionHash, actor.user.id],
+  );
+  if (!live.rowCount)
+    throw new HttpError(401, "Сессия истекла. Войдите заново.");
+}
 export async function newFlow(
-  db: Database,
+  db: Database | import("pg").PoolClient,
   purpose: string,
   payload: unknown,
   minutes = 5,
@@ -374,8 +418,30 @@ export async function buildApp(
         await audit(db, null, "auth.failed");
         throw new HttpError(401, "Неверный логин или пароль.");
       }
-      await audit(db, user.id, "auth.login", null, { method: "password" });
-      return makeSession(db, reply, user.id, "password");
+      // Serialize session creation with credential changes without holding a
+      // row lock during scrypt.
+      const session = await transaction(db, async (c) => {
+        const current = (
+          await c.query(
+            "SELECT password_hash,password_login_version,status FROM users WHERE id=$1 FOR UPDATE",
+            [user.id],
+          )
+        ).rows[0];
+        if (
+          !current ||
+          current.status === "suspended" ||
+          current.password_login_version !== 1 ||
+          current.password_hash !== user.password_hash
+        )
+          return null;
+        await audit(c, user.id, "auth.login", null, { method: "password" });
+        return insertSession(c, user.id, "password");
+      });
+      if (!session) {
+        await audit(db, null, "auth.failed");
+        throw new HttpError(401, "Неверный логин или пароль.");
+      }
+      return respondWithSession(reply, session);
     },
   );
   app.get("/api/auth/session", async (req) => {
@@ -540,20 +606,23 @@ export async function buildApp(
     if (!result.verified || !result.registrationInfo)
       throw new HttpError(400, "Не удалось проверить Passkey.");
     const info = result.registrationInfo;
-    await db.query(
-      "INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up,prf_wrap) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-      [
-        info.credential.id,
-        a.user.id,
-        Buffer.from(info.credential.publicKey),
-        info.credential.counter,
-        JSON.stringify(info.credential.transports ?? []),
-        info.credentialDeviceType,
-        info.credentialBackedUp,
-        input.wrap ?? null,
-      ],
-    );
-    await audit(db, a.user.id, "auth.passkey.added");
+    await transaction(db, async (c) => {
+      await lockRecentActor(c, a);
+      await c.query(
+        "INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up,prf_wrap) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+        [
+          info.credential.id,
+          a.user.id,
+          Buffer.from(info.credential.publicKey),
+          info.credential.counter,
+          JSON.stringify(info.credential.transports ?? []),
+          info.credentialDeviceType,
+          info.credentialBackedUp,
+          input.wrap ?? null,
+        ],
+      );
+      await audit(c, a.user.id, "auth.passkey.added");
+    });
     return { ok: true };
   });
   app.post(
@@ -757,6 +826,7 @@ export async function buildApp(
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      await lockRecentActor(c, a, true);
       const vault = (await c.query("SELECT epoch FROM vaults")).rows[0];
       if (vault.epoch !== input.epoch)
         throw new HttpError(
@@ -791,6 +861,12 @@ export async function buildApp(
     const pw = await passwordHash(input.loginSecret);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const live = await c.query(
+        "SELECT 1 FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=$1 AND expires_at>now() AND users.status<>'suspended' FOR UPDATE OF users",
+        [a.sessionHash],
+      );
+      if (!live.rowCount)
+        throw new HttpError(401, "Сессия истекла. Войдите заново.");
       await c.query(
         "UPDATE users SET identity=$1,password_hash=$3,password_login_version=1,sealed_key=NULL,status='pending' WHERE id=$2",
         [input.identity, a.user.id, pw],
@@ -831,6 +907,12 @@ export async function buildApp(
       .parse(req.body);
     return transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      const live = await c.query(
+        "SELECT 1 FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=$1 AND expires_at>now() AND users.status='active' AND users.sealed_key IS NOT NULL",
+        [a.sessionHash],
+      );
+      if (!live.rowCount)
+        throw new HttpError(403, "Доступ к хранилищу отозван.");
       const vault = (await c.query("SELECT epoch FROM vaults")).rows[0];
       if (vault.epoch !== input.epoch)
         throw new HttpError(
@@ -976,14 +1058,78 @@ export async function buildApp(
       };
     });
   });
-  app.post("/api/rotation", async (req) => {
-    const a = owner(req);
-    recent(req);
-    const rotated = z.object({
+  const rotated = z
+    .object({
       id: uuid,
       version: z.number().int().positive(),
       box: encryptedSchema,
+    })
+    .strict();
+  const rotationChunk = z
+    .object({
+      operation: uuid,
+      kind: z.enum(["records", "history"]),
+      rows: z.array(rotated).min(1).max(rotationChunkRowLimit),
+    })
+    .strict();
+  const rotationByteLimit = 128 * 1024 * 1024;
+  const rotationPurpose = (a: Auth, operation: string) =>
+    `rotation:${a.sessionHash}:${operation}`;
+  // A rotation uses its own request budget so normal API traffic does not
+  // interrupt staging. The byte and row limits keep a supported rotation
+  // below this budget without raising the public limit.
+  app.post(
+    "/api/rotation/chunks",
+    { config: { rateLimit: { max: 300, timeWindow: "1 minute" } } },
+    async (req) => {
+      const a = owner(req);
+      recent(req);
+      const chunk = rotationChunk.parse(req.body);
+      return transaction(db, async (c) => {
+        await lockRecentActor(c, a, true);
+        // Reserve capacity before the insert, including concurrent operations
+        // and abandoned uploads from other sessions of this owner.
+        const staged = await c.query(
+          "SELECT COALESCE(sum(octet_length(payload::text)),0) + octet_length($1::jsonb::text) AS bytes FROM flows WHERE purpose LIKE 'rotation:%' AND expires_at>now()",
+          [JSON.stringify(chunk)],
+        );
+        if (Number(staged.rows[0].bytes) > rotationByteLimit)
+          throw new HttpError(
+            413,
+            "Лимит временных данных ротации исчерпан. Повторите после истечения загруженных частей.",
+          );
+        return {
+          token: await newFlow(
+            c,
+            rotationPurpose(a, chunk.operation),
+            chunk,
+            15,
+          ),
+        };
+      });
+    },
+  );
+  app.post("/api/members/:id/suspend", async (req) => {
+    const a = owner(req);
+    recent(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return transaction(db, async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      await lockRecentActor(c, a, true);
+      const result = await c.query(
+        "UPDATE users SET status='suspended',sealed_key=NULL WHERE id=$1 AND role='admin' RETURNING id",
+        [id],
+      );
+      if (!result.rowCount)
+        throw new HttpError(404, "Администратор не найден.");
+      await c.query("DELETE FROM sessions WHERE user_id=$1", [id]);
+      await audit(c, a.user.id, "member.suspended", id);
+      return { ok: true };
     });
+  });
+  app.post("/api/rotation", async (req) => {
+    const a = owner(req);
+    recent(req);
     const input = z
       .object({
         snapshot: z.string().length(64),
@@ -995,13 +1141,53 @@ export async function buildApp(
             z.object({ id: uuid, publicKey: b64.length(43), sealedKey: b64 }),
           )
           .max(500),
-        records: z.array(rotated).max(10000),
-        history: z.array(rotated).max(50000),
+        records: z.array(rotated).max(10000).default([]),
+        history: z.array(rotated).max(50000).default([]),
+        chunks: z.array(b64.length(43)).max(1500).default([]),
+        operation: uuid.optional(),
       })
       .strict()
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      await lockRecentActor(c, a, true);
+      if (input.chunks.length) {
+        if (
+          !input.operation ||
+          input.records.length ||
+          input.history.length ||
+          new Set(input.chunks).size !== input.chunks.length
+        )
+          throw new HttpError(400, "Некорректный набор частей ротации.");
+        const hashes = input.chunks.map(hash);
+        const purpose = rotationPurpose(a, input.operation);
+        const size = await c.query(
+          "SELECT count(*)::int AS count, coalesce(sum(octet_length(payload::text)),0)::bigint AS bytes FROM flows WHERE token_hash=ANY($1::text[]) AND purpose=$2 AND expires_at>now()",
+          [hashes, purpose],
+        );
+        if (
+          size.rows[0].count !== hashes.length ||
+          Number(size.rows[0].bytes) > rotationByteLimit
+        )
+          throw new HttpError(
+            400,
+            "Части ротации истекли или превышают 128 МиБ.",
+          );
+        const chunks = await c.query(
+          "DELETE FROM flows WHERE token_hash=ANY($1::text[]) AND purpose=$2 AND expires_at>now() RETURNING payload",
+          [hashes, purpose],
+        );
+        if (chunks.rowCount !== hashes.length)
+          throw new HttpError(
+            409,
+            "Части ротации изменились. Повторите действие.",
+          );
+        for (const { payload } of chunks.rows) {
+          const chunk = rotationChunk.parse(payload);
+          const rows = input[chunk.kind];
+          for (const row of chunk.rows) rows.push(row);
+        }
+      }
       const s = await snapshot(c);
       if (
         snapshotHash(s) !== input.snapshot ||
@@ -1012,11 +1198,7 @@ export async function buildApp(
           "Хранилище изменилось. Повторите отключение участника.",
         );
       const revoked = s.users.find((u) => u.id === input.revokeId);
-      if (
-        !revoked ||
-        revoked.role === "owner" ||
-        revoked.status === "suspended"
-      )
+      if (!revoked || revoked.role === "owner")
         throw new HttpError(400, "Нельзя отключить этого участника.");
       const members = s.users.filter(
         (u) => u.status === "active" && u.id !== input.revokeId,
@@ -1036,14 +1218,11 @@ export async function buildApp(
         [s.records, input.records],
         [s.history, input.history],
       ] as const) {
+        const identities = new Set(incoming.map((r) => `${r.id}:${r.version}`));
         if (
           existing.length !== incoming.length ||
-          new Set(incoming.map((r) => `${r.id}:${r.version}`)).size !==
-            existing.length ||
-          existing.some(
-            (r) =>
-              !incoming.find((v) => v.id === r.id && v.version === r.version),
-          )
+          identities.size !== existing.length ||
+          existing.some((r) => !identities.has(`${r.id}:${r.version}`))
         )
           throw new HttpError(400, "Неполный набор зашифрованных записей.");
       }
