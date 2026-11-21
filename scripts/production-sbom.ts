@@ -253,7 +253,9 @@ export async function createProductionSbom() {
     const node = record(value);
     // npm emits {} for uninstalled optional dependencies. Missing required
     // packages make npm ls exit nonzero, before this tree can be consumed.
-    if (!Object.keys(node).length) return undefined;
+    // npm can also list installed optional build tools as extraneous siblings
+    // of the root. They have no dependency edge in the production tree.
+    if (!Object.keys(node).length || node.extraneous === true) return undefined;
     const path = await normalize(text(node.path));
     const children = production.get(path) ?? new Set<string>();
     production.set(path, children);
