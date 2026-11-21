@@ -53,13 +53,34 @@ async function get(url: string, headers: Record<string, string> = {}) {
   );
   return response;
 }
+// Enforce size limits as bytes arrive, including when Content-Length is absent.
+async function readBounded(response: Response, limit = 4 * 1024 * 1024) {
+  const reader = response.body?.getReader();
+  assert.ok(reader, "Missing download body");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new Error("Downloaded response exceeds size limit");
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, size);
+  } finally {
+    reader.releaseLock();
+  }
+}
 async function json(
   url: string,
   headers?: Record<string, string>,
 ): Promise<Record<string, unknown>> {
   const response = await get(url, headers);
-  const value: unknown = await response.json();
-  return object(value);
+  return parse(await readBounded(response));
 }
 function parse(bytes: Uint8Array): Record<string, unknown> {
   const value: unknown = JSON.parse(Buffer.from(bytes).toString("utf8"));
@@ -225,7 +246,7 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
       asset.browser_download_url === url,
       "Unexpected release download origin or path",
     );
-    const bytes = Buffer.from(await (await get(url)).arrayBuffer());
+    const bytes = await readBounded(await get(url), size);
     assert.equal(bytes.length, size, "Release asset size mismatch");
     files.set(name, bytes);
   }
@@ -296,7 +317,7 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
     `https://ghcr.io/v2/${image}/manifests/${tag}`,
     auth,
   );
-  const indexBytes = Buffer.from(await indexResponse.arrayBuffer());
+  const indexBytes = await readBounded(indexResponse);
   assert.ok(
     `sha256:${sha(indexBytes)}` === imageDigest &&
       indexResponse.headers.get("docker-content-digest") === imageDigest,
@@ -318,10 +339,8 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
     "Missing image attestation",
   );
   const manifestDigest = digest(platform[0]!.digest);
-  const manifestBytes = Buffer.from(
-    await (
-      await get(`https://ghcr.io/v2/${image}/manifests/${manifestDigest}`, auth)
-    ).arrayBuffer(),
+  const manifestBytes = await readBounded(
+    await get(`https://ghcr.io/v2/${image}/manifests/${manifestDigest}`, auth),
   );
   assert.ok(
     `sha256:${sha(manifestBytes)}` === manifestDigest,
@@ -329,10 +348,8 @@ export async function verifyPublicRelease(options: VerifyReleaseOptions) {
   );
   const manifest = parse(manifestBytes),
     configDigest = digest(object(manifest.config).digest);
-  const configBytes = Buffer.from(
-    await (
-      await get(`https://ghcr.io/v2/${image}/blobs/${configDigest}`, auth)
-    ).arrayBuffer(),
+  const configBytes = await readBounded(
+    await get(`https://ghcr.io/v2/${image}/blobs/${configDigest}`, auth),
   );
   assert.ok(
     `sha256:${sha(configBytes)}` === configDigest,

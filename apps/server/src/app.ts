@@ -99,7 +99,7 @@ export async function audit(
     [userId, action, target, JSON.stringify(detail)],
   );
 }
-async function insertSession(
+export async function insertSession(
   db: Database | import("pg").PoolClient,
   userId: string,
   method: string,
@@ -113,7 +113,7 @@ async function insertSession(
   );
   return { raw, csrf };
 }
-function respondWithSession(
+export function respondWithSession(
   reply: FastifyReply,
   { raw, csrf }: { raw: string; csrf: string },
 ) {
@@ -164,8 +164,34 @@ export function recent(req: FastifyRequest): Auth {
     throw new HttpError(403, "Для этого действия войдите заново.");
   return a;
 }
+export async function lockRecentActor(
+  c: import("pg").PoolClient,
+  actor: Auth,
+  ownerOnly = false,
+) {
+  // Match credential changes: lock the user before the session.
+  const user = await c.query(
+    "SELECT role,status,sealed_key FROM users WHERE id=$1 AND status<>'suspended' FOR UPDATE",
+    [actor.user.id],
+  );
+  const current = user.rows[0];
+  if (
+    !current ||
+    (ownerOnly &&
+      (current.role !== "owner" ||
+        current.status !== "active" ||
+        !current.sealed_key))
+  )
+    throw new HttpError(403, "Недостаточно прав для этого действия.");
+  const live = await c.query(
+    "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() AND authenticated_at>=clock_timestamp()-interval '15 minutes' FOR UPDATE",
+    [actor.sessionHash, actor.user.id],
+  );
+  if (!live.rowCount)
+    throw new HttpError(401, "Сессия истекла. Войдите заново.");
+}
 export async function newFlow(
-  db: Database,
+  db: Database | import("pg").PoolClient,
   purpose: string,
   payload: unknown,
   minutes = 5,
@@ -580,20 +606,23 @@ export async function buildApp(
     if (!result.verified || !result.registrationInfo)
       throw new HttpError(400, "Не удалось проверить Passkey.");
     const info = result.registrationInfo;
-    await db.query(
-      "INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up,prf_wrap) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-      [
-        info.credential.id,
-        a.user.id,
-        Buffer.from(info.credential.publicKey),
-        info.credential.counter,
-        JSON.stringify(info.credential.transports ?? []),
-        info.credentialDeviceType,
-        info.credentialBackedUp,
-        input.wrap ?? null,
-      ],
-    );
-    await audit(db, a.user.id, "auth.passkey.added");
+    await transaction(db, async (c) => {
+      await lockRecentActor(c, a);
+      await c.query(
+        "INSERT INTO credentials(id,user_id,public_key,counter,transports,device_type,backed_up,prf_wrap) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+        [
+          info.credential.id,
+          a.user.id,
+          Buffer.from(info.credential.publicKey),
+          info.credential.counter,
+          JSON.stringify(info.credential.transports ?? []),
+          info.credentialDeviceType,
+          info.credentialBackedUp,
+          input.wrap ?? null,
+        ],
+      );
+      await audit(c, a.user.id, "auth.passkey.added");
+    });
     return { ok: true };
   });
   app.post(
@@ -797,6 +826,7 @@ export async function buildApp(
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
+      await lockRecentActor(c, a, true);
       const vault = (await c.query("SELECT epoch FROM vaults")).rows[0];
       if (vault.epoch !== input.epoch)
         throw new HttpError(
@@ -1042,6 +1072,7 @@ export async function buildApp(
       rows: z.array(rotated).min(1).max(rotationChunkRowLimit),
     })
     .strict();
+  const rotationByteLimit = 128 * 1024 * 1024;
   const rotationPurpose = (a: Auth, operation: string) =>
     `rotation:${a.sessionHash}:${operation}`;
   // A rotation uses its own request budget so normal API traffic does not
@@ -1054,41 +1085,37 @@ export async function buildApp(
       const a = owner(req);
       recent(req);
       const chunk = rotationChunk.parse(req.body);
-      return {
-        token: await newFlow(
-          db,
-          rotationPurpose(a, chunk.operation),
-          chunk,
-          15,
-        ),
-      };
+      return transaction(db, async (c) => {
+        await lockRecentActor(c, a, true);
+        // Reserve capacity before the insert, including concurrent operations
+        // and abandoned uploads from other sessions of this owner.
+        const staged = await c.query(
+          "SELECT COALESCE(sum(octet_length(payload::text)),0) + octet_length($1::jsonb::text) AS bytes FROM flows WHERE purpose LIKE 'rotation:%' AND expires_at>now()",
+          [JSON.stringify(chunk)],
+        );
+        if (Number(staged.rows[0].bytes) > rotationByteLimit)
+          throw new HttpError(
+            413,
+            "Лимит временных данных ротации исчерпан. Повторите после истечения загруженных частей.",
+          );
+        return {
+          token: await newFlow(
+            c,
+            rotationPurpose(a, chunk.operation),
+            chunk,
+            15,
+          ),
+        };
+      });
     },
   );
-  async function requireLiveRotationOwner(
-    c: import("pg").PoolClient,
-    actor: Auth,
-  ) {
-    // Match credential changes: lock the user before the session.
-    const user = await c.query(
-      "SELECT 1 FROM users WHERE id=$1 AND role='owner' AND status='active' AND sealed_key IS NOT NULL FOR UPDATE",
-      [actor.user.id],
-    );
-    if (!user.rowCount)
-      throw new HttpError(403, "Действие доступно только владельцу.");
-    const live = await c.query(
-      "SELECT 1 FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() AND authenticated_at>=clock_timestamp()-interval '15 minutes' FOR UPDATE",
-      [actor.sessionHash, actor.user.id],
-    );
-    if (!live.rowCount)
-      throw new HttpError(401, "Сессия истекла. Войдите заново.");
-  }
   app.post("/api/members/:id/suspend", async (req) => {
     const a = owner(req);
     recent(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     return transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
-      await requireLiveRotationOwner(c, a);
+      await lockRecentActor(c, a, true);
       const result = await c.query(
         "UPDATE users SET status='suspended',sealed_key=NULL WHERE id=$1 AND role='admin' RETURNING id",
         [id],
@@ -1123,7 +1150,7 @@ export async function buildApp(
       .parse(req.body);
     await transaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(7364292)");
-      await requireLiveRotationOwner(c, a);
+      await lockRecentActor(c, a, true);
       if (input.chunks.length) {
         if (
           !input.operation ||
@@ -1140,7 +1167,7 @@ export async function buildApp(
         );
         if (
           size.rows[0].count !== hashes.length ||
-          Number(size.rows[0].bytes) > 128 * 1024 * 1024
+          Number(size.rows[0].bytes) > rotationByteLimit
         )
           throw new HttpError(
             400,

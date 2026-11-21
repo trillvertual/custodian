@@ -101,6 +101,7 @@ export function useVault() {
         if (e instanceof ApiError && e.status === 401) {
           if (request !== sessionRequest.current) return null;
           setSession(null);
+          setRecovery(null);
           setCsrf("");
           lock();
           return null;
@@ -359,6 +360,7 @@ export function useVault() {
   async function logout() {
     await api("/auth/logout", "POST");
     lock();
+    setRecovery(null);
     setSession(null);
     setCsrf("");
   }
