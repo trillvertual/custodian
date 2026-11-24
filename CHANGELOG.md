@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-11-24
+
+- При ротации сервер читает шифртекст порциями и применяет загруженные части в одной транзакции. Клиент получает согласованный снимок прежнего формата.
+- Rescue CLI сохраняет начальные и конечные пробелы пароля из однострочного файла. Допускается одно завершающее окончание строки LF или CRLF.
+- Обновлены jose до 6.2.18, @fastify/helmet до 13.2.0, Prettier до 3.10.1, concurrently до 10.0.7, @testing-library/user-event до 14.6.13, typescript-eslint до 8.73.0 и CodeQL Action до 4.39.4.
+
 ## [0.5.5] - 2026-11-21
 
 - Обновлены Vite, React-плагин, jsdom, ESLint и компоненты Radix. При привязке OAuth, регистрации Passkey и выдаче ключа участнику сервер повторно проверяет сессию в транзакции.
@@ -85,7 +91,8 @@
 - Обновлены скриншоты 2560×1440 на демонстрационных данных. Релиз включает готовый runtime, исходники, SBOM и SHA-256.
 - Новых миграций БД и изменений формата зашифрованных данных нет. Записи и rescue-ключи прежних установок совместимы.
 
-[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.5...main
+[Unreleased]: https://github.com/trillvertual/custodian/compare/v0.5.6...main
+[0.5.6]: https://github.com/trillvertual/custodian/releases/tag/v0.5.6
 [0.5.5]: https://github.com/trillvertual/custodian/releases/tag/v0.5.5
 [0.5.4]: https://github.com/trillvertual/custodian/releases/tag/v0.5.4
 [0.5.3]: https://github.com/trillvertual/custodian/releases/tag/v0.5.3
