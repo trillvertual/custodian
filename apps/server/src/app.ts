@@ -4,6 +4,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import staticPlugin from "@fastify/static";
 import { z, ZodError } from "zod";
+import { Readable, addAbortSignal } from "node:stream";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -1022,14 +1023,16 @@ export async function buildApp(
     return result;
   });
   // Revocation rotates the vault key, including trash and all historical versions.
-  async function snapshot(c: Database | import("pg").PoolClient) {
+  async function snapshot(c: import("pg").PoolClient) {
     const vault = (await c.query("SELECT * FROM vaults")).rows[0];
     const users = (await c.query("SELECT * FROM users ORDER BY id"))
       .rows as UserRow[];
-    const records = (await c.query("SELECT * FROM records ORDER BY id")).rows;
+    const records = (
+      await c.query("SELECT id,version FROM records ORDER BY id")
+    ).rows;
     const history = (
       await c.query(
-        "SELECT record_id AS id,* FROM record_history ORDER BY record_id,version",
+        "SELECT record_id AS id,version FROM record_history ORDER BY record_id,version",
       )
     ).rows;
     return { vault, users, records, history };
@@ -1043,20 +1046,55 @@ export async function buildApp(
         history: s.history.map((r) => [r.id, r.version]),
       }),
     );
-  app.get("/api/rotation", async (req) => {
+  async function* rotationSnapshot() {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const state = await snapshot(client);
+      const header = {
+        snapshot: snapshotHash(state),
+        epoch: state.vault.epoch,
+        members: state.users.map(member),
+      };
+      yield JSON.stringify(header).slice(0, -1);
+      for (const kind of ["records", "history"] as const) {
+        yield `,"${kind}":[`;
+        const query =
+          kind === "records"
+            ? "SELECT * FROM records ORDER BY id"
+            : "SELECT record_id AS id,version,epoch,box,updated_by,updated_at,NULL AS deleted_at FROM record_history ORDER BY record_id,version";
+        await client.query(
+          "DECLARE rotation_rows NO SCROLL CURSOR FOR " + query,
+        );
+        let first = true;
+        while (true) {
+          const page = await client.query("FETCH FORWARD 8 FROM rotation_rows");
+          for (const row of page.rows) {
+            yield (first ? "" : ",") + JSON.stringify(mapRecord(row));
+            first = false;
+          }
+          if (page.rows.length < 8) break;
+        }
+        await client.query("CLOSE rotation_rows");
+        yield "]";
+      }
+      yield "}";
+    } finally {
+      // Also close the read-only snapshot on disconnect or serialization error.
+      try {
+        await client.query("ROLLBACK");
+      } finally {
+        client.release();
+      }
+    }
+  }
+  app.get("/api/rotation", async (req, reply) => {
     owner(req);
     recent(req);
-    return transaction(db, async (c) => {
-      await c.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      const s = await snapshot(c);
-      return {
-        snapshot: snapshotHash(s),
-        epoch: s.vault.epoch,
-        members: s.users.map(member),
-        records: s.records.map(mapRecord),
-        history: s.history.map((r) => mapRecord({ ...r, deleted_at: null })),
-      };
-    });
+    const stream = Readable.from(rotationSnapshot(), { objectMode: false });
+    return reply
+      .type("application/json")
+      .send(addAbortSignal(AbortSignal.timeout(120_000), stream));
   });
   const rotated = z
     .object({
@@ -1173,20 +1211,6 @@ export async function buildApp(
             400,
             "Части ротации истекли или превышают 128 МиБ.",
           );
-        const chunks = await c.query(
-          "DELETE FROM flows WHERE token_hash=ANY($1::text[]) AND purpose=$2 AND expires_at>now() RETURNING payload",
-          [hashes, purpose],
-        );
-        if (chunks.rowCount !== hashes.length)
-          throw new HttpError(
-            409,
-            "Части ротации изменились. Повторите действие.",
-          );
-        for (const { payload } of chunks.rows) {
-          const chunk = rotationChunk.parse(payload);
-          const rows = input[chunk.kind];
-          for (const row of chunk.rows) rows.push(row);
-        }
       }
       const s = await snapshot(c);
       if (
@@ -1214,28 +1238,44 @@ export async function buildApp(
         )
       )
         throw new HttpError(400, "Не всем участникам выданы новые ключи.");
-      for (const [existing, incoming] of [
-        [s.records, input.records],
-        [s.history, input.history],
-      ] as const) {
-        const identities = new Set(incoming.map((r) => `${r.id}:${r.version}`));
-        if (
-          existing.length !== incoming.length ||
-          identities.size !== existing.length ||
-          existing.some((r) => !identities.has(`${r.id}:${r.version}`))
-        )
-          throw new HttpError(400, "Неполный набор зашифрованных записей.");
+      const missing = {
+        records: new Set(s.records.map((r) => `${r.id}:${r.version}`)),
+        history: new Set(s.history.map((r) => `${r.id}:${r.version}`)),
+      };
+      async function applyRows(
+        kind: "records" | "history",
+        rows: z.infer<typeof rotated>[],
+      ) {
+        const sql =
+          kind === "records"
+            ? "UPDATE records SET box=$1,epoch=$2 WHERE id=$3 AND version=$4"
+            : "UPDATE record_history SET box=$1,epoch=$2 WHERE record_id=$3 AND version=$4";
+        for (const row of rows) {
+          if (!missing[kind].delete(`${row.id}:${row.version}`))
+            throw new HttpError(
+              400,
+              "Некорректный набор зашифрованных записей.",
+            );
+          await c.query(sql, [row.box, input.epoch, row.id, row.version]);
+        }
       }
-      for (const r of input.records)
-        await c.query(
-          "UPDATE records SET box=$1,epoch=$2 WHERE id=$3 AND version=$4",
-          [r.box, input.epoch, r.id, r.version],
+      await applyRows("records", input.records);
+      await applyRows("history", input.history);
+      for (const part of input.chunks) {
+        const result = await c.query(
+          "DELETE FROM flows WHERE token_hash=$1 AND purpose=$2 AND expires_at>now() RETURNING payload",
+          [hash(part), rotationPurpose(a, input.operation!)],
         );
-      for (const r of input.history)
-        await c.query(
-          "UPDATE record_history SET box=$1,epoch=$2 WHERE record_id=$3 AND version=$4",
-          [r.box, input.epoch, r.id, r.version],
-        );
+        if (!result.rowCount)
+          throw new HttpError(
+            409,
+            "Части ротации изменились. Повторите действие.",
+          );
+        const chunk = rotationChunk.parse(result.rows[0].payload);
+        await applyRows(chunk.kind, chunk.rows);
+      }
+      if (missing.records.size || missing.history.size)
+        throw new HttpError(400, "Неполный набор зашифрованных записей.");
       for (const key of input.keys)
         await c.query("UPDATE users SET sealed_key=$1 WHERE id=$2", [
           key.sealedKey,

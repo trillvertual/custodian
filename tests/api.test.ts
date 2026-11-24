@@ -612,7 +612,31 @@ describe("closed authentication and shared vault", () => {
     expect((await send("/records", "GET", undefined, "admin")).statusCode).toBe(
       401,
     );
+    // Extend one record past a cursor page and verify every historical version.
+    let version = (
+      await db.query("SELECT version FROM records WHERE id=$1", [recordId])
+    ).rows[0].version as number;
+    for (let index = 0; index < 10; index++) {
+      const box = encryptJson(
+        { title: "Snapshot fixture" },
+        root.key!,
+        recordContext(vaultId, recordId, version + 1, 1),
+      );
+      const saved = await send(`/records/${recordId}`, "PUT", {
+        baseVersion: version,
+        epoch: 1,
+        box,
+      });
+      expect(saved.statusCode).toBe(200);
+      version++;
+    }
     const snapshot = (await send("/rotation")).json();
+    const versions = snapshot.history
+      .filter((r: StoredRecord) => r.id === recordId)
+      .map((r: StoredRecord) => r.version);
+    expect(versions).toEqual(
+      Array.from({ length: version - 1 }, (_, i) => i + 1),
+    );
     rotationSnapshot = snapshot.snapshot;
     const next = randomKey(),
       recovery = createRecovery(next, vaultId, 2);
