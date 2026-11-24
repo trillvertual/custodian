@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
+import { parsePasswordFile } from "./password-file.ts";
 import {
   ready,
   recoverVault,
@@ -47,8 +48,10 @@ const { values, positionals } = parseArgs({
 async function file(name: "key-file" | "password-file") {
   const path = values[name];
   if (!path) throw new Error(`Required --${name}`);
-  const text = (await readFile(path, "utf8")).trim();
-  return name === "key-file" ? text.split(/\r?\n/)[0]!.trim() : text;
+  const text = await readFile(path, "utf8");
+  return name === "key-file"
+    ? text.trim().split(/\r?\n/)[0]!.trim()
+    : parsePasswordFile(text);
 }
 async function output(data: unknown) {
   if (!values.output) throw new Error("Required --output");

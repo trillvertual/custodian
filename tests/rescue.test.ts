@@ -14,6 +14,14 @@ import {
   recordContext,
   erase,
 } from "../packages/core/src/index.ts";
+import { parsePasswordFile } from "../packages/rescue/src/password-file.ts";
+it("preserves password whitespace and accepts only a single password line", () => {
+  const password = "  sample password with spaces  ";
+  for (const ending of ["", "\n", "\r\n"])
+    expect(parsePasswordFile(password + ending)).toBe(password);
+  expect(() => parsePasswordFile(password + "\n\n")).toThrow(/single line/);
+  expect(() => parsePasswordFile("first\nsecond")).toThrow(/single line/);
+});
 const exec = promisify(execFile);
 beforeAll(async () => {
   await ready;
