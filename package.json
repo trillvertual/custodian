@@ -46,7 +46,7 @@
     "fake-indexeddb": "^6.2.8",
     "fastify": "^5.12.8",
     "jsdom": "^31.0.1",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
